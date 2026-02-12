@@ -87,6 +87,27 @@ input:focus,textarea:focus,select:focus{border-color:var(--accent)}textarea{resi
 .toast.ok{border-color:var(--green);color:var(--green)}.toast.err{border-color:var(--red);color:var(--red)}
 @keyframes si{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
 @media(max-width:900px){.kanban{grid-template-columns:repeat(2,1fr)}}
+.tl-card,.note-card,.instr-card,.error-card{cursor:pointer;transition:border-color .2s,transform .15s}
+.tl-card:hover,.note-card:hover,.error-card:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,.3)}
+.instr-card:hover{border-color:var(--border-focus)}
+.error-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:8px}
+.error-type-badge{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:1px;padding:2px 8px;border-radius:4px;display:inline-block}
+.etype-build{color:var(--blue);background:rgba(77,171,247,.1)}.etype-runtime{color:var(--red);background:rgba(255,107,107,.1)}
+.etype-type{color:var(--amber);background:rgba(255,169,77,.1)}.etype-test{color:var(--green);background:rgba(0,214,143,.1)}
+.etype-dependency{color:var(--cyan);background:rgba(34,184,207,.1)}.etype-config{color:var(--text-dim);background:var(--bg-elevated)}
+.etype-network{color:var(--amber);background:rgba(255,169,77,.1)}.etype-general{color:var(--text-dim);background:var(--bg-elevated)}
+.etype-other{color:var(--text-dim);background:var(--bg-elevated)}
+.detail-row{display:flex;gap:12px;margin-bottom:10px;font-size:13px;line-height:1.5}
+.detail-row .dl{color:var(--text-dim);min-width:110px;flex-shrink:0;font-size:12px;text-transform:uppercase;letter-spacing:.5px}
+.detail-row .dv{flex:1;color:var(--text)}
+.snapshot-section{margin-top:12px;padding:10px 12px;background:var(--bg);border-radius:6px;border-left:2px solid var(--accent)}
+.snapshot-section h4{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--text-dim);margin-bottom:6px}
+.snapshot-section pre{font-family:var(--mono);font-size:12px;color:var(--text-dim);white-space:pre-wrap;line-height:1.5}
+.snapshot-section ul{margin:0;padding-left:18px;font-size:12px;color:var(--text-dim);line-height:1.6}
+.badge-auto{font-family:var(--mono);font-size:10px;padding:2px 8px;border-radius:4px;background:rgba(108,92,231,.15);color:var(--accent);margin-left:8px}
+.btn-danger-block{display:block;width:100%;padding:10px;border-radius:var(--radius);font-size:13px;font-weight:500;color:var(--red);border:1px solid var(--red);background:transparent;margin-top:16px;transition:all .15s}
+.btn-danger-block:hover{background:rgba(255,107,107,.1)}
+.occurrence-badge{font-family:var(--mono);font-size:11px;padding:2px 8px;border-radius:10px;background:var(--bg-elevated);color:var(--text-dim);border:1px solid var(--border)}
 </style>
 </head>
 <body>
@@ -99,6 +120,7 @@ input:focus,textarea:focus,select:focus{border-color:var(--accent)}textarea{resi
       <button class="tab" data-view="notes">Notes</button>
       <button class="tab" data-view="search">Search</button>
       <button class="tab" data-view="instructions">Rules</button>
+      <button class="tab" data-view="errors">Errors</button>
       <button class="tab" data-view="status">System</button>
     </nav>
     <div class="topbar-right">
@@ -119,6 +141,7 @@ input:focus,textarea:focus,select:focus{border-color:var(--accent)}textarea{resi
     <div class="view" id="view-notes"><div class="panel"><div class="panel-header"><select id="nf" onchange="loadNotes()"><option value="">All</option><option value="decision">Decision</option><option value="debug">Debug</option><option value="architecture">Architecture</option><option value="reference">Reference</option><option value="general">General</option></select><button class="btn btn-primary" onclick="addNoteModal()">+ Note</button></div><div id="nl"></div></div></div>
     <div class="view" id="view-search"><div class="panel"><div class="search-bar"><input id="si" placeholder="Search memory..." onkeydown="if(event.key==='Enter')doSearch()"><select id="sm"><option value="hybrid">Hybrid</option><option value="semantic">Semantic</option><option value="keyword">Keyword</option></select><button class="btn btn-primary" onclick="doSearch()">Search</button></div><div id="sres"></div></div></div>
     <div class="view" id="view-instructions"><div class="panel"><div class="panel-header"><span style="font-size:13px;color:var(--text-dim)">Persistent directives loaded on every session</span><button class="btn btn-primary" style="margin-left:auto" onclick="addInstrModal()">+ Instruction</button></div><div id="il"></div></div></div>
+    <div class="view" id="view-errors"><div class="panel"><div class="panel-header"><select id="ef" onchange="loadErrors()"><option value="">All Types</option><option value="build">Build</option><option value="runtime">Runtime</option><option value="type">Type</option><option value="test">Test</option><option value="dependency">Dependency</option><option value="config">Config</option><option value="network">Network</option><option value="general">General</option></select></div><div id="el"></div></div></div>
     <div class="view" id="view-status"><div class="status-grid" id="sg"></div></div>
   </main>
   <div class="modal-overlay" id="mo" onclick="if(event.target===this)closeModal()"><div class="modal" id="mc"></div></div>
@@ -147,13 +170,14 @@ async function loadProjects(){
     sel.innerHTML='<option value="">All Projects</option>'+projects.map(p=>`<option value="${E(p.id)}">${E(p.name||p.path||p.id)}</option>`).join('');
   }catch(e){}
 }
-function switchProject(){currentProject=document.getElementById('project-select').value;loadTodos()}
+function switchProject(){currentProject=document.getElementById('project-select').value;loadTodos();
+  const av=document.querySelector('.tab.active');if(av){const v=av.dataset.view;({timeline:loadTL,notes:loadNotes,status:loadStatus,instructions:loadInstructions,errors:loadErrors})[v]?.()}}
 
 document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
   document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
   document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));
   t.classList.add('active');document.getElementById('view-'+t.dataset.view).classList.add('active');
-  ({timeline:loadTL,notes:loadNotes,status:loadStatus,instructions:loadInstructions})[t.dataset.view]?.();
+  ({timeline:loadTL,notes:loadNotes,status:loadStatus,instructions:loadInstructions,errors:loadErrors})[t.dataset.view]?.();
 }));
 
 async function loadTodos(){todos=await api('/todos');renderBoard()}
@@ -215,21 +239,47 @@ async function saveTodo(id){try{const s=document.getElementById('ms').value;
   if(s==='done')await api(`/todos/${id}/complete`,{method:'POST'});closeModal();toast('Updated');loadTodos()}catch(e){toast('Failed','err')}}
 async function delTodo(id){if(!confirm('Delete?'))return;try{await api(`/todos/${id}`,{method:'DELETE'});closeModal();toast('Deleted');loadTodos()}catch(e){toast('Failed','err')}}
 
-async function loadTL(){try{const snaps=await api('/snapshots?limit=30');const el=document.getElementById('tl');
+let snapshotsCache=[];
+async function loadTL(){try{const snaps=await api('/snapshots?limit=30');snapshotsCache=snaps;const el=document.getElementById('tl');
   if(!snaps.length){el.innerHTML='<div class="empty"><p>No snapshots yet. Use create_snapshot in Claude Code.</p></div>';return}
-  el.innerHTML=snaps.map(s=>`<div class="tl-item"><div class="tl-card"><div class="tl-time">${new Date(s.created_at).toLocaleString()}</div>
+  el.innerHTML=snaps.map(s=>`<div class="tl-item"><div class="tl-card" onclick="snapshotDetailModal('${s.id}')"><div class="tl-time">${new Date(s.created_at).toLocaleString()}</div>
     <div style="font-size:14px;line-height:1.6;margin-bottom:8px">${E(s.summary)}</div>
     ${s.module_focus?`<div style="font-size:12px;color:var(--blue);margin-top:4px">Focus: ${E(s.module_focus)}</div>`:''}
     ${s.architecture_notes?`<div class="tl-arch">${E(s.architecture_notes)}</div>`:''}
     <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">${(s.tags||[]).map(t=>`<span class="tag">${E(t)}</span>`).join('')}</div>
     </div></div>`).join('')}catch(e){toast('Load failed','err')}}
 
-async function loadNotes(){try{const cat=document.getElementById('nf').value;const notes=await api('/notes'+(cat?`?category=${cat}`:''));const el=document.getElementById('nl');
+function snapshotDetailModal(id){const s=snapshotsCache.find(x=>x.id===id);if(!s)return;
+  openModal(`<h2>Snapshot Detail${s.is_auto?'<span class="badge-auto">auto</span>':''}</h2>
+    <div class="detail-row"><span class="dl">Created</span><span class="dv" style="font-family:var(--mono);font-size:12px">${new Date(s.created_at).toLocaleString()}</span></div>
+    <div class="detail-row"><span class="dl">Summary</span><span class="dv">${E(s.summary)}</span></div>
+    ${s.module_focus?`<div class="detail-row"><span class="dl">Focus</span><span class="dv" style="color:var(--blue)">${E(s.module_focus)}</span></div>`:''}
+    ${s.architecture_notes?`<div class="snapshot-section"><h4>Architecture Notes</h4><pre>${E(s.architecture_notes)}</pre></div>`:''}
+    ${s.assumptions&&s.assumptions.length?`<div class="snapshot-section"><h4>Assumptions</h4><ul>${s.assumptions.map(a=>`<li>${E(a)}</li>`).join('')}</ul></div>`:''}
+    ${s.constraints&&s.constraints.length?`<div class="snapshot-section"><h4>Constraints</h4><ul>${s.constraints.map(c=>`<li>${E(c)}</li>`).join('')}</ul></div>`:''}
+    ${s.file_paths&&s.file_paths.length?`<div class="snapshot-section"><h4>Files</h4><ul>${s.file_paths.map(f=>`<li style="font-family:var(--mono);font-size:11px">${E(f)}</li>`).join('')}</ul></div>`:''}
+    ${(s.tags||[]).length?`<div style="display:flex;gap:6px;margin-top:12px;flex-wrap:wrap">${s.tags.map(t=>`<span class="tag">${E(t)}</span>`).join('')}</div>`:''}
+    <div class="form-actions" style="margin-top:20px"><button class="btn btn-secondary" onclick="closeModal()">Close</button></div>`)}
+
+let notesCache=[];
+async function loadNotes(){try{const cat=document.getElementById('nf').value;const notes=await api('/notes'+(cat?`?category=${cat}`:''));notesCache=notes;const el=document.getElementById('nl');
   if(!notes.length){el.innerHTML='<div class="empty"><p>No notes yet. Use add_note in Claude Code or click + Note.</p></div>';return}
-  el.innerHTML=notes.map(n=>`<div class="note-card"><div class="note-cat cat-${n.category}">${n.category}</div>
-    <div style="font-size:13px;line-height:1.6;white-space:pre-wrap">${E(n.content)}</div>
+  el.innerHTML=notes.map(n=>`<div class="note-card" onclick="noteDetailModal('${n.id}')"><div class="note-cat cat-${n.category}">${n.category}</div>
+    <div style="font-size:13px;line-height:1.6;white-space:pre-wrap;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden">${E(n.content)}</div>
     <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">${(n.tags||[]).map(t=>`<span class="tag">${E(t)}</span>`).join('')}</div>
     <div style="font-family:var(--mono);font-size:11px;color:var(--text-muted);margin-top:8px">${new Date(n.created_at).toLocaleString()}</div></div>`).join('')}catch(e){toast('Load failed','err')}}
+
+function noteDetailModal(id){const n=notesCache.find(x=>x.id===id);if(!n)return;
+  openModal(`<h2>Note Detail</h2>
+    <div class="detail-row"><span class="dl">Category</span><span class="dv"><span class="note-cat cat-${n.category}" style="margin:0">${E(n.category)}</span></span></div>
+    <div class="detail-row"><span class="dl">Created</span><span class="dv" style="font-family:var(--mono);font-size:12px">${new Date(n.created_at).toLocaleString()}</span></div>
+    <div style="font-size:13px;line-height:1.6;white-space:pre-wrap;padding:12px;background:var(--bg);border-radius:6px;margin:12px 0">${E(n.content)}</div>
+    ${(n.tags||[]).length?`<div class="detail-row"><span class="dl">Tags</span><span class="dv">${n.tags.map(t=>`<span class="tag">${E(t)}</span>`).join(' ')}</span></div>`:''}
+    ${(n.related_files||[]).length?`<div class="detail-row"><span class="dl">Files</span><span class="dv">${n.related_files.map(f=>`<div style="font-family:var(--mono);font-size:11px">${E(f)}</div>`).join('')}</span></div>`:''}
+    <button class="btn-danger-block" onclick="deleteNote('${n.id}')">Delete Note</button>
+    <div class="form-actions"><button class="btn btn-secondary" onclick="closeModal()">Close</button></div>`)}
+async function deleteNote(id){if(!confirm('Delete this note?'))return;
+  try{await api('/notes/'+id,{method:'DELETE'});closeModal();toast('Note deleted');loadNotes()}catch(e){toast('Failed','err')}}
 
 function addNoteModal(){openModal(`<h2>New Note</h2><div class="form-group"><label>Content</label><textarea id="nc" rows="4"></textarea></div>
   <div class="form-group"><label>Category</label><select id="ncat"><option value="general">General</option><option value="decision">Decision</option><option value="debug">Debug</option><option value="architecture">Architecture</option><option value="reference">Reference</option></select></div>
@@ -250,11 +300,23 @@ async function doSearch(){const q=document.getElementById('si').value.trim();if(
       <div class="card-meta" style="margin-top:8px">${(x.tags||[]).map(t=>`<span class="tag">${E(t)}</span>`).join('')}</div></div>`).join('')}catch(e){el.innerHTML='<div class="empty"><p>Search failed. Is embedding service running?</p></div>'}}
 
 // Instructions
-async function loadInstructions(){try{const instrs=await api('/instructions');const el=document.getElementById('il');
+let instrsCache=[];
+async function loadInstructions(){try{const instrs=await api('/instructions');instrsCache=instrs;const el=document.getElementById('il');
   if(!instrs.length){el.innerHTML='<div class="empty"><p>No instructions yet. Add project-specific rules that persist across sessions.</p></div>';return}
-  el.innerHTML=instrs.map(i=>`<div class="instr-card">
-    <div class="instr-content"><div class="instr-cat">${E(i.category)}${i.priority>0?' · priority '+i.priority:''}</div>${E(i.content)}</div>
-    <button class="instr-remove" onclick="removeInstr('${i.id}')">remove</button></div>`).join('')}catch(e){toast('Load failed','err')}}
+  el.innerHTML=instrs.map(i=>`<div class="instr-card" onclick="instrDetailModal('${i.id}')">
+    <div class="instr-content"><div class="instr-cat">${E(i.category)}${i.priority>0?' · priority '+i.priority:''}</div>${E(i.content)}</div></div>`).join('')}catch(e){toast('Load failed','err')}}
+
+function instrDetailModal(id){const i=instrsCache.find(x=>x.id===id);if(!i)return;
+  openModal(`<h2>Instruction Detail</h2>
+    <div class="detail-row"><span class="dl">Category</span><span class="dv"><span class="instr-cat" style="margin:0">${E(i.category)}</span></span></div>
+    <div class="detail-row"><span class="dl">Priority</span><span class="dv">${i.priority===0?'Normal':i.priority===1?'High':'Critical'}</span></div>
+    <div class="detail-row"><span class="dl">Created</span><span class="dv" style="font-family:var(--mono);font-size:12px">${new Date(i.created_at).toLocaleString()}</span></div>
+    <div style="font-size:13px;line-height:1.6;white-space:pre-wrap;padding:12px;background:var(--bg);border-radius:6px;margin:12px 0">${E(i.content)}</div>
+    ${(i.tags||[]).length?`<div class="detail-row"><span class="dl">Tags</span><span class="dv">${i.tags.map(t=>`<span class="tag">${E(t)}</span>`).join(' ')}</span></div>`:''}
+    <button class="btn-danger-block" onclick="removeInstrFromModal('${i.id}')">Delete Instruction</button>
+    <div class="form-actions"><button class="btn btn-secondary" onclick="closeModal()">Close</button></div>`)}
+async function removeInstrFromModal(id){if(!confirm('Remove instruction?'))return;
+  try{await api('/instructions/'+id,{method:'DELETE'});closeModal();toast('Removed');loadInstructions()}catch(e){toast('Failed','err')}}
 
 function addInstrModal(){openModal(`<h2>New Instruction</h2><div class="form-group"><label>Instruction</label><textarea id="ic" rows="3" placeholder="e.g. Always use bun instead of npm"></textarea></div>
   <div class="form-group"><label>Category</label><select id="icat"><option value="general">General</option><option value="build">Build</option><option value="style">Style</option><option value="workflow">Workflow</option><option value="constraint">Constraint</option></select></div>
@@ -264,8 +326,28 @@ function addInstrModal(){openModal(`<h2>New Instruction</h2><div class="form-gro
 async function submitInstr(){const c=document.getElementById('ic').value.trim();if(!c)return toast('Content needed','err');
   try{await api('/instructions',{method:'POST',body:{content:c,category:document.getElementById('icat').value,priority:+document.getElementById('ip').value}});
   closeModal();toast('Instruction added');loadInstructions()}catch(e){toast('Failed','err')}}
-async function removeInstr(id){if(!confirm('Remove instruction?'))return;
-  try{await api(`/instructions/${id}`,{method:'DELETE'});toast('Removed');loadInstructions()}catch(e){toast('Failed','err')}}
+let errorsCache=[];
+async function loadErrors(){try{const et=document.getElementById('ef').value;const errors=await api('/errors'+(et?`?error_type=${et}`:''));errorsCache=errors;const el=document.getElementById('el');
+  if(!errors.length){el.innerHTML='<div class="empty"><p>No error patterns recorded yet. Use log_error_pattern in Claude Code.</p></div>';return}
+  el.innerHTML=errors.map(e=>`<div class="error-card" onclick="errorDetailModal('${e.id}')">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span class="error-type-badge etype-${e.error_type||'general'}">${E(e.error_type||'general')}</span><span class="occurrence-badge">${e.occurrence_count||1}x</span></div>
+    <div style="font-size:13px;line-height:1.6">${E(e.error_message)}</div>
+    ${e.resolution?`<div style="font-size:12px;color:var(--green);margin-top:6px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${E(e.resolution)}</div>`:''}
+    <div style="font-family:var(--mono);font-size:11px;color:var(--text-muted);margin-top:8px">Last seen: ${new Date(e.last_seen_at||e.created_at).toLocaleString()}</div></div>`).join('')}catch(e){toast('Load failed','err')}}
+
+function errorDetailModal(id){const e=errorsCache.find(x=>x.id===id);if(!e)return;
+  openModal(`<h2>Error Pattern</h2>
+    <div class="detail-row"><span class="dl">Type</span><span class="dv"><span class="error-type-badge etype-${e.error_type||'general'}">${E(e.error_type||'general')}</span></span></div>
+    <div class="detail-row"><span class="dl">Occurrences</span><span class="dv"><span class="occurrence-badge">${e.occurrence_count||1}x</span></span></div>
+    <div class="detail-row"><span class="dl">First Seen</span><span class="dv" style="font-family:var(--mono);font-size:12px">${new Date(e.created_at).toLocaleString()}</span></div>
+    <div class="detail-row"><span class="dl">Last Seen</span><span class="dv" style="font-family:var(--mono);font-size:12px">${new Date(e.last_seen_at||e.created_at).toLocaleString()}</span></div>
+    <div class="snapshot-section"><h4>Error Message</h4><pre>${E(e.error_message)}</pre></div>
+    ${e.root_cause?`<div class="snapshot-section" style="border-left-color:var(--amber)"><h4>Root Cause</h4><pre>${E(e.root_cause)}</pre></div>`:''}
+    ${e.resolution?`<div class="snapshot-section" style="border-left-color:var(--green)"><h4>Resolution</h4><pre>${E(e.resolution)}</pre></div>`:''}
+    ${e.attempted_fixes&&e.attempted_fixes.length?`<div class="snapshot-section" style="border-left-color:var(--red)"><h4>Attempted Fixes</h4><ul>${e.attempted_fixes.map(f=>`<li>${E(f)}</li>`).join('')}</ul></div>`:''}
+    ${(e.file_paths||[]).length?`<div class="snapshot-section"><h4>Files</h4><ul>${e.file_paths.map(f=>`<li style="font-family:var(--mono);font-size:11px">${E(f)}</li>`).join('')}</ul></div>`:''}
+    ${(e.tags||[]).length?`<div style="display:flex;gap:6px;margin-top:12px;flex-wrap:wrap">${e.tags.map(t=>`<span class="tag">${E(t)}</span>`).join('')}</div>`:''}
+    <div class="form-actions" style="margin-top:20px"><button class="btn btn-secondary" onclick="closeModal()">Close</button></div>`)}
 
 async function loadStatus(){const g=document.getElementById('sg');g.innerHTML='<div style="color:var(--text-muted);padding:20px">Loading...</div>';
   try{const[h,s]=await Promise.all([api('/health'),api('/stats')]);
