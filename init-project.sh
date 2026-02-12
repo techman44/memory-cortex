@@ -49,7 +49,14 @@ fi
 API_URL="http://localhost:${API_PORT}"
 
 # ── Generate project ID from target path ───────────────────
-PROJECT_ID=$(echo -n "$TARGET" | shasum -a 256 | cut -c1-12)
+if command -v shasum &>/dev/null; then
+  PROJECT_ID=$(echo -n "$TARGET" | shasum -a 256 | cut -c1-12)
+elif command -v sha256sum &>/dev/null; then
+  PROJECT_ID=$(echo -n "$TARGET" | sha256sum | cut -c1-12)
+else
+  echo "ERROR: Neither shasum nor sha256sum found. Install coreutils."
+  exit 1
+fi
 echo "  Project ID: $PROJECT_ID"
 echo ""
 
