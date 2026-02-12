@@ -58,6 +58,22 @@ When context feels large, also call `summarize_project` to verify state is fully
 
 ---
 
+## MANDATORY — After Every Git Commit
+
+**Every commit MUST be followed by a `create_snapshot` that includes the commit hash and a summary of what changed. A commit without a Cortex snapshot is an INCOMPLETE change.**
+
+After editing source code, the full sequence is:
+
+1. Build the project
+2. Sync any build contexts (e.g. `sync-api-server.sh`)
+3. `git add` + `git commit` + `git push`
+4. `create_snapshot` with commit hash and change summary — **immediately, not later**
+5. Rebuild and restart any affected services (e.g. Docker containers)
+
+**Steps 4 and 5 are EQUALLY mandatory. Never skip either. Never consider the work done until both are complete.**
+
+---
+
 ## MANDATORY — After Context Compression
 
 If you notice context may have been lost (conversation feels shorter, details are fuzzy):
