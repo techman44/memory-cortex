@@ -371,7 +371,7 @@ let pollTimer=null;
 function getActiveView(){const t=document.querySelector('.tab.active');return t?t.dataset.view:null}
 function pollActiveTab(){const v=getActiveView();if(!v)return;
   ({kanban:loadTodos,timeline:loadTL,notes:loadNotes,instructions:loadInstructions,errors:loadErrors,status:loadStatus})[v]?.()}
-function startPolling(){stopPolling();pollTimer=setInterval(pollActiveTab,10000)}
+function startPolling(){stopPolling();pollTimer=setInterval(pollActiveTab,3000)}
 function stopPolling(){if(pollTimer){clearInterval(pollTimer);pollTimer=null}}
 
 // Reset poll on tab switch
