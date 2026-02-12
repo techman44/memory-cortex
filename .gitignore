@@ -1,0 +1,35 @@
+# Environment and secrets
+.env
+*.key
+*.pem
+*.cert
+
+# Node
+node_modules/
+mcp-server/build/
+api-server/build/
+*.tsbuildinfo
+
+# Docker volumes
+pgdata/
+model-cache/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Archives (original source zips)
+*.zip
+
+# Claude auto-memory (local only)
+.claude/
+
+# MCP local config (has paths specific to each machine)
+.mcp.json
+
+# Misc
+mnt/

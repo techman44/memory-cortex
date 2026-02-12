@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MCP Memory Cortex</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0a0b0f;--bg-card:#12131a;--bg-elevated:#181a24;--bg-hover:#1e2030;--border:#252838;--border-focus:#3d4260;--text:#e2e4f0;--text-dim:#7a7f9d;--text-muted:#4a4f6a;--accent:#6c5ce7;--accent-glow:rgba(108,92,231,0.15);--green:#00d68f;--amber:#ffa94d;--red:#ff6b6b;--blue:#4dabf7;--cyan:#22b8cf;--mono:'JetBrains Mono',monospace;--sans:'DM Sans',system-ui,sans-serif;--radius:8px;--radius-lg:12px}
+html{font-size:14px;background:var(--bg);color:var(--text)}body{font-family:var(--sans);min-height:100vh}
+button{font-family:inherit;cursor:pointer;border:none;background:none;color:var(--text)}
+input,textarea,select{font-family:var(--mono);background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;outline:none;transition:border-color .2s}
+input:focus,textarea:focus,select:focus{border-color:var(--accent)}textarea{resize:vertical;min-height:80px}
+::selection{background:var(--accent);color:#fff}::-webkit-scrollbar{width:6px}::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+.app{display:flex;flex-direction:column;height:100vh}
+.topbar{display:flex;align-items:center;gap:16px;padding:0 24px;height:56px;border-bottom:1px solid var(--border);background:var(--bg-card);flex-shrink:0}
+.logo{font-family:var(--mono);font-weight:700;font-size:15px;letter-spacing:-.5px;display:flex;align-items:center;gap:8px}
+.logo .dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+.tabs{display:flex;gap:2px;margin-left:32px}
+.tab{padding:8px 16px;font-size:13px;font-weight:500;color:var(--text-dim);border-radius:6px;transition:all .15s;position:relative}
+.tab:hover{color:var(--text);background:var(--bg-hover)}.tab.active{color:var(--accent);background:var(--accent-glow)}
+.tab.active::after{content:'';position:absolute;bottom:-9px;left:50%;transform:translateX(-50%);width:24px;height:2px;background:var(--accent);border-radius:1px}
+.topbar-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+.project-select{font-family:var(--mono);font-size:11px;padding:4px 10px;border-radius:20px;background:var(--bg-elevated);color:var(--text-dim);border:1px solid var(--border);cursor:pointer}
+.stat-pill{font-family:var(--mono);font-size:11px;padding:4px 10px;border-radius:20px;background:var(--bg-elevated);color:var(--text-dim);border:1px solid var(--border)}
+.main{flex:1;overflow:auto;padding:24px}.view{display:none}.view.active{display:block}
+.kanban{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;min-height:calc(100vh - 120px)}
+.kanban-col{background:var(--bg-card);border-radius:var(--radius-lg);border:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+.kanban-col-header{padding:14px 16px;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:1px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border);flex-shrink:0}
+.kanban-col-header .count{font-family:var(--mono);font-size:11px;background:var(--bg-elevated);padding:2px 8px;border-radius:10px;color:var(--text-dim)}
+.col-todo .kanban-col-header{color:var(--blue)}.col-ip .kanban-col-header{color:var(--amber)}.col-blocked .kanban-col-header{color:var(--red)}.col-done .kanban-col-header{color:var(--green)}
+.kanban-cards{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px}
+.kanban-card{background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius);padding:12px;cursor:pointer;transition:all .15s}
+.kanban-card:hover{border-color:var(--border-focus);transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,.3)}
+.kanban-card .card-title{font-size:13px;font-weight:500;margin-bottom:6px;line-height:1.4}
+.kanban-card .card-desc{font-size:12px;color:var(--text-dim);line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.kanban-card .card-meta{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.tag{font-family:var(--mono);font-size:10px;padding:2px 8px;border-radius:4px;background:var(--accent-glow);color:var(--accent);border:1px solid rgba(108,92,231,.2)}
+.priority-high{border-left:3px solid var(--amber)}.priority-critical{border-left:3px solid var(--red)}
+.add-card-btn{margin:8px 12px 12px;padding:8px;font-size:12px;color:var(--text-muted);border:1px dashed var(--border);border-radius:var(--radius);text-align:center;transition:all .15s}
+.add-card-btn:hover{color:var(--text-dim);border-color:var(--border-focus);background:var(--bg-hover)}
+.drop-active{background:var(--accent-glow)}
+.timeline{max-width:800px;margin:0 auto}
+.tl-item{position:relative;padding-left:32px;padding-bottom:24px;border-left:2px solid var(--border);margin-left:8px}
+.tl-item::before{content:'';position:absolute;left:-5px;top:4px;width:8px;height:8px;border-radius:50%;background:var(--accent);border:2px solid var(--bg)}
+.tl-item:last-child{border-left-color:transparent}
+.tl-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px;transition:border-color .2s}
+.tl-card:hover{border-color:var(--border-focus)}
+.tl-time{font-family:var(--mono);font-size:11px;color:var(--text-muted);margin-bottom:8px}
+.tl-arch{font-size:12px;color:var(--text-dim);line-height:1.5;padding:8px 12px;background:var(--bg);border-radius:6px;margin-top:8px;border-left:2px solid var(--accent);font-family:var(--mono);white-space:pre-wrap}
+.panel{max-width:800px;margin:0 auto}
+.panel-header{display:flex;gap:8px;margin-bottom:20px;align-items:center}
+.panel-header select{font-family:var(--sans);padding:8px 12px}
+.note-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:8px}
+.note-cat{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px}
+.cat-decision{color:var(--amber)}.cat-debug{color:var(--red)}.cat-architecture{color:var(--blue)}.cat-reference{color:var(--cyan)}.cat-general{color:var(--text-dim)}
+.search-bar{display:flex;gap:8px;margin-bottom:20px}.search-bar input{flex:1;font-size:14px;padding:12px 16px}
+.search-bar select{font-family:var(--sans);padding:12px;min-width:120px}
+.btn{padding:10px 20px;border-radius:var(--radius);font-size:13px;font-weight:500;transition:all .15s}
+.btn-primary{background:var(--accent);color:#fff}.btn-primary:hover{filter:brightness(1.1)}
+.btn-secondary{background:var(--bg-elevated);color:var(--text-dim);border:1px solid var(--border)}.btn-secondary:hover{border-color:var(--border-focus);color:var(--text)}
+.sr{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:8px}
+.sr:hover{border-color:var(--border-focus)}
+.sr-type{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--accent);margin-bottom:6px}
+.sr-sim{font-family:var(--mono);font-size:11px;color:var(--green);margin-top:8px}
+.status-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px;max-width:1000px;margin:0 auto}
+.status-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px}
+.status-card h3{font-size:11px;text-transform:uppercase;letter-spacing:1.5px;color:var(--text-muted);margin-bottom:12px}
+.big-num{font-family:var(--mono);font-size:36px;font-weight:700;background:linear-gradient(135deg,var(--accent),var(--blue));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.dot-lg{width:10px;height:10px;border-radius:50%;display:inline-block}
+.dot-green{background:var(--green);box-shadow:0 0 8px rgba(0,214,143,.5)}.dot-red{background:var(--red);box-shadow:0 0 8px rgba(255,107,107,.5)}
+.instr-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.instr-content{flex:1;font-size:13px;line-height:1.5}.instr-cat{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--cyan);margin-bottom:4px}
+.instr-remove{font-size:11px;color:var(--red);cursor:pointer;padding:4px 8px;border-radius:4px;border:1px solid transparent}.instr-remove:hover{border-color:var(--red);background:rgba(255,107,107,.1)}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:100;opacity:0;pointer-events:none;transition:opacity .2s}
+.modal-overlay.open{opacity:1;pointer-events:all}
+.modal{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-lg);width:90%;max-width:520px;max-height:85vh;overflow-y:auto;padding:24px}
+.modal h2{font-size:16px;font-weight:600;margin-bottom:16px}.form-group{margin-bottom:14px}
+.form-group label{display:block;font-size:12px;color:var(--text-dim);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px}
+.modal input,.modal textarea,.modal select{width:100%}.form-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:20px}
+.btn-danger{color:var(--red)}
+.empty{text-align:center;padding:60px 20px;color:var(--text-muted)}.empty p{font-size:14px;max-width:360px;margin:8px auto;line-height:1.6}
+.toasts{position:fixed;bottom:24px;right:24px;z-index:200;display:flex;flex-direction:column;gap:8px}
+.toast{padding:12px 20px;border-radius:var(--radius);font-size:13px;background:var(--bg-elevated);border:1px solid var(--border);box-shadow:0 8px 24px rgba(0,0,0,.4);animation:si .3s ease;min-width:240px}
+.toast.ok{border-color:var(--green);color:var(--green)}.toast.err{border-color:var(--red);color:var(--red)}
+@keyframes si{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
+@media(max-width:900px){.kanban{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="logo"><span class="dot"></span><span>MCP CORTEX</span></div>
+    <nav class="tabs">
+      <button class="tab active" data-view="kanban">Board</button>
+      <button class="tab" data-view="timeline">Timeline</button>
+      <button class="tab" data-view="notes">Notes</button>
+      <button class="tab" data-view="search">Search</button>
+      <button class="tab" data-view="instructions">Rules</button>
+      <button class="tab" data-view="status">System</button>
+    </nav>
+    <div class="topbar-right">
+      <select class="project-select" id="project-select" onchange="switchProject()">
+        <option value="">All Projects</option>
+      </select>
+      <span class="stat-pill" id="stat-pill">loading...</span>
+    </div>
+  </header>
+  <main class="main">
+    <div class="view active" id="view-kanban"><div class="kanban">
+      <div class="kanban-col col-todo"><div class="kanban-col-header"><span>Todo</span><span class="count" data-count="todo">0</span></div><div class="kanban-cards" data-drop="todo"></div><button class="add-card-btn" onclick="addTodoModal('todo')">+ Add task</button></div>
+      <div class="kanban-col col-ip"><div class="kanban-col-header"><span>In Progress</span><span class="count" data-count="in_progress">0</span></div><div class="kanban-cards" data-drop="in_progress"></div><button class="add-card-btn" onclick="addTodoModal('in_progress')">+ Add task</button></div>
+      <div class="kanban-col col-blocked"><div class="kanban-col-header"><span>Blocked</span><span class="count" data-count="blocked">0</span></div><div class="kanban-cards" data-drop="blocked"></div><button class="add-card-btn" onclick="addTodoModal('blocked')">+ Add task</button></div>
+      <div class="kanban-col col-done"><div class="kanban-col-header"><span>Done</span><span class="count" data-count="done">0</span></div><div class="kanban-cards" data-drop="done"></div></div>
+    </div></div>
+    <div class="view" id="view-timeline"><div class="timeline" id="tl"></div></div>
+    <div class="view" id="view-notes"><div class="panel"><div class="panel-header"><select id="nf" onchange="loadNotes()"><option value="">All</option><option value="decision">Decision</option><option value="debug">Debug</option><option value="architecture">Architecture</option><option value="reference">Reference</option><option value="general">General</option></select><button class="btn btn-primary" onclick="addNoteModal()">+ Note</button></div><div id="nl"></div></div></div>
+    <div class="view" id="view-search"><div class="panel"><div class="search-bar"><input id="si" placeholder="Search memory..." onkeydown="if(event.key==='Enter')doSearch()"><select id="sm"><option value="hybrid">Hybrid</option><option value="semantic">Semantic</option><option value="keyword">Keyword</option></select><button class="btn btn-primary" onclick="doSearch()">Search</button></div><div id="sres"></div></div></div>
+    <div class="view" id="view-instructions"><div class="panel"><div class="panel-header"><span style="font-size:13px;color:var(--text-dim)">Persistent directives loaded on every session</span><button class="btn btn-primary" style="margin-left:auto" onclick="addInstrModal()">+ Instruction</button></div><div id="il"></div></div></div>
+    <div class="view" id="view-status"><div class="status-grid" id="sg"></div></div>
+  </main>
+  <div class="modal-overlay" id="mo" onclick="if(event.target===this)closeModal()"><div class="modal" id="mc"></div></div>
+  <div class="toasts" id="ts"></div>
+</div>
+<script>
+const A='/api';
+let currentProject='';
+
+async function api(p,o={}){
+  let url=A+p;
+  if(currentProject){url+=(p.includes('?')?'&':'?')+'project_id='+encodeURIComponent(currentProject)}
+  const body=o.body?{...o.body,project_id:currentProject||undefined}:undefined;
+  const r=await fetch(url,{headers:{'Content-Type':'application/json'},...o,body:body?JSON.stringify(body):undefined});
+  if(!r.ok)throw new Error(r.status);return r.json()
+}
+function E(s){return s?s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'):''}
+function toast(m,t='ok'){const e=document.createElement('div');e.className='toast '+t;e.textContent=m;document.getElementById('ts').appendChild(e);setTimeout(()=>e.remove(),3000)}
+let todos={board:{todo:[],in_progress:[],blocked:[],done:[]},total:0},drag=null;
+
+// Project selector
+async function loadProjects(){
+  try{
+    const projects=await fetch(A+'/projects').then(r=>r.json());
+    const sel=document.getElementById('project-select');
+    sel.innerHTML='<option value="">All Projects</option>'+projects.map(p=>`<option value="${E(p.id)}">${E(p.name||p.path||p.id)}</option>`).join('');
+  }catch(e){}
+}
+function switchProject(){currentProject=document.getElementById('project-select').value;loadTodos()}
+
+document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+  document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));
+  t.classList.add('active');document.getElementById('view-'+t.dataset.view).classList.add('active');
+  ({timeline:loadTL,notes:loadNotes,status:loadStatus,instructions:loadInstructions})[t.dataset.view]?.();
+}));
+
+async function loadTodos(){todos=await api('/todos');renderBoard()}
+function renderBoard(){
+  ['todo','in_progress','blocked','done'].forEach(s=>{
+    const c=document.querySelector(`[data-drop="${s}"]`),n=document.querySelector(`[data-count="${s}"]`),items=todos.board[s]||[];
+    n.textContent=items.length;
+    c.innerHTML=items.map(t=>`<div class="kanban-card ${t.priority===1?'priority-high':''} ${t.priority>=2?'priority-critical':''}" draggable="true" data-id="${t.id}" onclick="detailModal('${t.id}')">
+      <div class="card-title">${E(t.title)}</div>${t.description?`<div class="card-desc">${E(t.description)}</div>`:''}
+      ${t.blocked_reason&&s==='blocked'?`<div style="font-size:11px;color:var(--red);margin-top:4px">${E(t.blocked_reason)}</div>`:''}
+      <div class="card-meta">${(t.tags||[]).map(x=>`<span class="tag">${E(x)}</span>`).join('')}</div></div>`).join('');
+    c.querySelectorAll('.kanban-card').forEach(card=>{
+      card.addEventListener('dragstart',e=>{drag={id:card.dataset.id,from:s};card.style.opacity='.5';e.dataTransfer.effectAllowed='move'});
+      card.addEventListener('dragend',()=>{card.style.opacity='1';drag=null;document.querySelectorAll('.drop-active').forEach(z=>z.classList.remove('drop-active'))});
+    });
+  });
+  const a=(todos.board.todo?.length||0)+(todos.board.in_progress?.length||0)+(todos.board.blocked?.length||0);
+  document.getElementById('stat-pill').textContent=`${a} active · ${todos.board.done?.length||0} done`;
+}
+document.querySelectorAll('[data-drop]').forEach(z=>{
+  z.addEventListener('dragover',e=>{e.preventDefault();z.classList.add('drop-active')});
+  z.addEventListener('dragleave',()=>z.classList.remove('drop-active'));
+  z.addEventListener('drop',async e=>{e.preventDefault();z.classList.remove('drop-active');if(!drag)return;
+    const ns=z.dataset.drop;if(ns===drag.from)return;
+    try{ns==='done'?await api(`/todos/${drag.id}/complete`,{method:'POST'}):await api(`/todos/${drag.id}`,{method:'PATCH',body:{status:ns}});toast('Moved');loadTodos()}catch(e){toast('Failed','err')}});
+});
+
+function openModal(h){document.getElementById('mc').innerHTML=h;document.getElementById('mo').classList.add('open')}
+function closeModal(){document.getElementById('mo').classList.remove('open')}
+
+function addTodoModal(s='todo'){
+  openModal(`<h2>New Task</h2><div class="form-group"><label>Title</label><input id="mt"></div><div class="form-group"><label>Description</label><textarea id="md"></textarea></div>
+    <div class="form-group"><label>Priority</label><select id="mp"><option value="0">Normal</option><option value="1">High</option><option value="2">Critical</option></select></div>
+    <div class="form-group"><label>Tags</label><input id="mg" placeholder="comma-separated"></div>
+    <div class="form-group"><label>Files</label><input id="mf" placeholder="comma-separated"></div>
+    <div class="form-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="submitTodo('${s}')">Create</button></div>`);
+  setTimeout(()=>document.getElementById('mt')?.focus(),50);
+}
+async function submitTodo(s){const t=document.getElementById('mt').value.trim();if(!t)return toast('Title needed','err');
+  try{await api('/todos',{method:'POST',body:{title:t,description:document.getElementById('md').value.trim()||undefined,status:s,priority:+document.getElementById('mp').value,
+    tags:document.getElementById('mg').value.split(',').map(x=>x.trim()).filter(Boolean),related_files:document.getElementById('mf').value.split(',').map(x=>x.trim()).filter(Boolean)}});
+    closeModal();toast('Created');loadTodos()}catch(e){toast('Failed','err')}}
+
+function detailModal(id){const all=[...todos.board.todo,...todos.board.in_progress,...todos.board.blocked,...todos.board.done],t=all.find(x=>x.id===id);if(!t)return;
+  openModal(`<h2>Edit Task</h2><div class="form-group"><label>Title</label><input id="mt" value="${E(t.title)}"></div>
+    <div class="form-group"><label>Description</label><textarea id="md">${E(t.description||'')}</textarea></div>
+    <div class="form-group"><label>Status</label><select id="ms"><option value="todo"${t.status==='todo'?' selected':''}>Todo</option><option value="in_progress"${t.status==='in_progress'?' selected':''}>In Progress</option><option value="blocked"${t.status==='blocked'?' selected':''}>Blocked</option><option value="done"${t.status==='done'?' selected':''}>Done</option></select></div>
+    <div class="form-group"><label>Priority</label><select id="mp"><option value="0"${t.priority===0?' selected':''}>Normal</option><option value="1"${t.priority===1?' selected':''}>High</option><option value="2"${t.priority>=2?' selected':''}>Critical</option></select></div>
+    <div class="form-group"><label>Tags</label><input id="mg" value="${(t.tags||[]).join(', ')}"></div>
+    <div class="form-group"><label>Files</label><input id="mf" value="${(t.related_files||[]).join(', ')}"></div>
+    <div class="form-group"><label>Blocked Reason</label><input id="mb" value="${E(t.blocked_reason||'')}"></div>
+    <p style="font-family:var(--mono);font-size:11px;color:var(--text-muted);margin-top:8px">Created: ${new Date(t.created_at).toLocaleString()}</p>
+    ${t.completed_at?`<p style="font-family:var(--mono);font-size:11px;color:var(--green);margin-top:4px">Done: ${new Date(t.completed_at).toLocaleString()}</p>`:''}
+    <div class="form-actions"><button class="btn btn-danger" onclick="delTodo('${t.id}')">Delete</button><button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="saveTodo('${t.id}')">Save</button></div>`)}
+
+async function saveTodo(id){try{const s=document.getElementById('ms').value;
+  await api(`/todos/${id}`,{method:'PATCH',body:{title:document.getElementById('mt').value.trim(),description:document.getElementById('md').value.trim(),status:s,priority:+document.getElementById('mp').value,
+    tags:document.getElementById('mg').value.split(',').map(x=>x.trim()).filter(Boolean),related_files:document.getElementById('mf').value.split(',').map(x=>x.trim()).filter(Boolean),blocked_reason:document.getElementById('mb').value.trim()}});
+  if(s==='done')await api(`/todos/${id}/complete`,{method:'POST'});closeModal();toast('Updated');loadTodos()}catch(e){toast('Failed','err')}}
+async function delTodo(id){if(!confirm('Delete?'))return;try{await api(`/todos/${id}`,{method:'DELETE'});closeModal();toast('Deleted');loadTodos()}catch(e){toast('Failed','err')}}
+
+async function loadTL(){try{const snaps=await api('/snapshots?limit=30');const el=document.getElementById('tl');
+  if(!snaps.length){el.innerHTML='<div class="empty"><p>No snapshots yet. Use create_snapshot in Claude Code.</p></div>';return}
+  el.innerHTML=snaps.map(s=>`<div class="tl-item"><div class="tl-card"><div class="tl-time">${new Date(s.created_at).toLocaleString()}</div>
+    <div style="font-size:14px;line-height:1.6;margin-bottom:8px">${E(s.summary)}</div>
+    ${s.module_focus?`<div style="font-size:12px;color:var(--blue);margin-top:4px">Focus: ${E(s.module_focus)}</div>`:''}
+    ${s.architecture_notes?`<div class="tl-arch">${E(s.architecture_notes)}</div>`:''}
+    <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">${(s.tags||[]).map(t=>`<span class="tag">${E(t)}</span>`).join('')}</div>
+    </div></div>`).join('')}catch(e){toast('Load failed','err')}}
+
+async function loadNotes(){try{const cat=document.getElementById('nf').value;const notes=await api('/notes'+(cat?`?category=${cat}`:''));const el=document.getElementById('nl');
+  if(!notes.length){el.innerHTML='<div class="empty"><p>No notes yet. Use add_note in Claude Code or click + Note.</p></div>';return}
+  el.innerHTML=notes.map(n=>`<div class="note-card"><div class="note-cat cat-${n.category}">${n.category}</div>
+    <div style="font-size:13px;line-height:1.6;white-space:pre-wrap">${E(n.content)}</div>
+    <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">${(n.tags||[]).map(t=>`<span class="tag">${E(t)}</span>`).join('')}</div>
+    <div style="font-family:var(--mono);font-size:11px;color:var(--text-muted);margin-top:8px">${new Date(n.created_at).toLocaleString()}</div></div>`).join('')}catch(e){toast('Load failed','err')}}
+
+function addNoteModal(){openModal(`<h2>New Note</h2><div class="form-group"><label>Content</label><textarea id="nc" rows="4"></textarea></div>
+  <div class="form-group"><label>Category</label><select id="ncat"><option value="general">General</option><option value="decision">Decision</option><option value="debug">Debug</option><option value="architecture">Architecture</option><option value="reference">Reference</option></select></div>
+  <div class="form-group"><label>Tags</label><input id="ntags" placeholder="comma-separated"></div>
+  <div class="form-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="submitNote()">Save</button></div>`);
+  setTimeout(()=>document.getElementById('nc')?.focus(),50)}
+async function submitNote(){const c=document.getElementById('nc').value.trim();if(!c)return toast('Content needed','err');
+  try{await api('/notes',{method:'POST',body:{content:c,category:document.getElementById('ncat').value,tags:document.getElementById('ntags').value.split(',').map(x=>x.trim()).filter(Boolean)}});
+  closeModal();toast('Note saved');loadNotes()}catch(e){toast('Failed','err')}}
+
+async function doSearch(){const q=document.getElementById('si').value.trim();if(!q)return;const m=document.getElementById('sm').value;const el=document.getElementById('sres');
+  el.innerHTML='<div style="text-align:center;padding:20px;color:var(--text-muted)">Searching...</div>';
+  try{const r=await api('/search',{method:'POST',body:{query:q,mode:m,limit:10}});
+    if(!r.length){el.innerHTML='<div class="empty"><p>No matching memories.</p></div>';return}
+    el.innerHTML=r.map(x=>`<div class="sr"><div class="sr-type">${E(x.content_type)} · ${x.search_mode}</div>
+      <div style="font-size:13px;line-height:1.6;white-space:pre-wrap">${E(x.content_text)}</div>
+      ${x.similarity>0?`<div class="sr-sim">similarity: ${(x.similarity*100).toFixed(1)}%</div>`:''}
+      <div class="card-meta" style="margin-top:8px">${(x.tags||[]).map(t=>`<span class="tag">${E(t)}</span>`).join('')}</div></div>`).join('')}catch(e){el.innerHTML='<div class="empty"><p>Search failed. Is embedding service running?</p></div>'}}
+
+// Instructions
+async function loadInstructions(){try{const instrs=await api('/instructions');const el=document.getElementById('il');
+  if(!instrs.length){el.innerHTML='<div class="empty"><p>No instructions yet. Add project-specific rules that persist across sessions.</p></div>';return}
+  el.innerHTML=instrs.map(i=>`<div class="instr-card">
+    <div class="instr-content"><div class="instr-cat">${E(i.category)}${i.priority>0?' · priority '+i.priority:''}</div>${E(i.content)}</div>
+    <button class="instr-remove" onclick="removeInstr('${i.id}')">remove</button></div>`).join('')}catch(e){toast('Load failed','err')}}
+
+function addInstrModal(){openModal(`<h2>New Instruction</h2><div class="form-group"><label>Instruction</label><textarea id="ic" rows="3" placeholder="e.g. Always use bun instead of npm"></textarea></div>
+  <div class="form-group"><label>Category</label><select id="icat"><option value="general">General</option><option value="build">Build</option><option value="style">Style</option><option value="workflow">Workflow</option><option value="constraint">Constraint</option></select></div>
+  <div class="form-group"><label>Priority</label><select id="ip"><option value="0">Normal</option><option value="1">High</option><option value="2">Critical</option></select></div>
+  <div class="form-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="submitInstr()">Save</button></div>`);
+  setTimeout(()=>document.getElementById('ic')?.focus(),50)}
+async function submitInstr(){const c=document.getElementById('ic').value.trim();if(!c)return toast('Content needed','err');
+  try{await api('/instructions',{method:'POST',body:{content:c,category:document.getElementById('icat').value,priority:+document.getElementById('ip').value}});
+  closeModal();toast('Instruction added');loadInstructions()}catch(e){toast('Failed','err')}}
+async function removeInstr(id){if(!confirm('Remove instruction?'))return;
+  try{await api(`/instructions/${id}`,{method:'DELETE'});toast('Removed');loadInstructions()}catch(e){toast('Failed','err')}}
+
+async function loadStatus(){const g=document.getElementById('sg');g.innerHTML='<div style="color:var(--text-muted);padding:20px">Loading...</div>';
+  try{const[h,s]=await Promise.all([api('/health'),api('/stats')]);
+    const tt=Object.values(s.todos||{}).reduce((a,b)=>a+b,0);
+    g.innerHTML=`<div class="status-card"><h3>Database</h3><div style="display:flex;align-items:center;gap:8px;font-size:13px"><div class="dot-lg ${h.db==='connected'?'dot-green':'dot-red'}"></div>${h.db}</div></div>
+      <div class="status-card"><h3>Embeddings</h3><div style="display:flex;align-items:center;gap:8px;font-size:13px"><div class="dot-lg ${h.embedding==='connected'?'dot-green':'dot-red'}"></div>${s.embedding_service||h.embedding}</div></div>
+      <div class="status-card"><h3>Snapshots</h3><div class="big-num">${s.snapshots}</div></div>
+      <div class="status-card"><h3>Memories</h3><div class="big-num">${s.memories}</div></div>
+      <div class="status-card"><h3>Tasks</h3><div class="big-num">${tt}</div></div>
+      <div class="status-card"><h3>Notes</h3><div class="big-num">${s.notes}</div></div>
+      <div class="status-card"><h3>Error Patterns</h3><div class="big-num">${s.error_patterns}</div></div>
+      <div class="status-card"><h3>Instructions</h3><div class="big-num">${s.instructions}</div></div>`}catch(e){g.innerHTML=`<div class="status-card"><h3>Error</h3><p style="color:var(--red)">${e.message}</p></div>`}}
+
+loadProjects();loadTodos();
+</script>
+</body>
+</html>
