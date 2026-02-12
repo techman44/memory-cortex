@@ -29,6 +29,7 @@ If `get_project_brief` returns empty, this is a new project. You MUST immediatel
 | When this happens | You MUST do this immediately |
 |---|---|
 | You make any architectural or design decision | `add_note` category="decision" — capture the what, why, and alternatives rejected |
+| You formulate a plan (before implementing) | `add_note` category="decision" — persist the full plan BEFORE writing any code |
 | You debug something non-obvious | `add_note` category="debug" — capture symptoms, root cause, and fix |
 | You diagnose any error | `log_error_pattern` with error_message, root_cause, resolution, and file_paths |
 | You are about to fix an error | `check_error_patterns` FIRST — it may already be solved |
@@ -41,6 +42,66 @@ If `get_project_brief` returns empty, this is a new project. You MUST immediatel
 | A major refactor or structural change is done | `create_snapshot` + update `set_project_brief` |
 
 **If in doubt about whether something is worth saving — save it. Over-persistence is always better than lost context.**
+
+---
+
+## CRITICAL — Todo Tracking Is Non-Negotiable
+
+**Todos are the heartbeat of your workflow. They are NOT optional. They are NOT "nice to have." Every piece of work you do MUST be tracked as a todo. If there is no todo, the work does not exist.**
+
+### When the user gives you a task:
+
+1. **IMMEDIATELY** call `add_todo` for the overall task — before you read a single file, before you write a single line of code
+2. If the task has multiple steps, create a todo for EACH step
+3. Call `update_todo` with `status="in_progress"` the MOMENT you start working on a step
+4. Call `complete_todo` the MOMENT you finish a step — not later, not in a batch, NOW
+5. If you get blocked, call `update_todo` with `status="blocked"` and `blocked_reason`
+
+### The lifecycle of EVERY todo:
+
+```
+add_todo (status="todo")  →  update_todo (status="in_progress")  →  complete_todo (status="done")
+```
+
+**You MUST move every todo through ALL three stages. No skipping. No shortcuts.**
+
+### What counts as a todo:
+
+- Every user request (the parent task)
+- Every implementation step within that request
+- Every bug you find that needs fixing
+- Every file that needs modification
+- Every build/deploy step
+- Every follow-up item you discover while working
+
+### Examples of CORRECT behavior:
+
+```
+User: "Add a new API endpoint"
+
+1. add_todo("Add new API endpoint for X")           → status: todo
+2. update_todo(id, status="in_progress")             → you start working
+3. add_todo("Write handler function in tools.ts")    → sub-task
+4. update_todo(sub_id, status="in_progress")         → start sub-task
+5. complete_todo(sub_id)                             → handler done
+6. add_todo("Add route in api-server.ts")            → next sub-task
+7. update_todo(sub2_id, status="in_progress")        → start it
+8. complete_todo(sub2_id)                            → route done
+9. add_todo("Build and deploy")                      → deploy step
+10. update_todo(sub3_id, status="in_progress")       → deploying
+11. complete_todo(sub3_id)                           → deployed
+12. complete_todo(parent_id)                         → whole task done
+```
+
+### What FAILURE looks like (DO NOT DO THIS):
+
+- Doing work without any todos → **UNACCEPTABLE**
+- Creating a todo only after the work is done → **UNACCEPTABLE**
+- Creating a todo but never moving it to in_progress → **UNACCEPTABLE**
+- Finishing work but forgetting to complete_todo → **UNACCEPTABLE**
+- Batching all todo updates at the end → **UNACCEPTABLE**
+
+**The dashboard's Board tab is the user's window into what you're doing. If the board is empty while you're working, you have FAILED. The user should see tasks moving across the board in real-time as you work.**
 
 ---
 
@@ -117,3 +178,5 @@ If you notice context may have been lost (conversation feels shorter, details ar
 4. **NEVER assume past context.** Always query Cortex before making assumptions.
 5. **NEVER end a session without a final snapshot.** Future-you depends on it.
 6. **Tag everything consistently.** Use module names, feature names, and concern areas for retrieval.
+7. **NEVER do work without a todo.** Every task gets an `add_todo` BEFORE work starts, `update_todo` to in_progress WHEN work starts, and `complete_todo` WHEN work finishes. No exceptions.
+8. **NEVER persist a plan only in conversation.** Plans MUST be saved to Cortex via `add_note` category="decision" BEFORE implementation begins.
