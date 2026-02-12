@@ -167,7 +167,9 @@ async function loadProjects(){
   try{
     const projects=await fetch(A+'/projects').then(r=>r.json());
     const sel=document.getElementById('project-select');
+    const prev=sel.value;
     sel.innerHTML='<option value="">All Projects</option>'+projects.map(p=>`<option value="${E(p.id)}">${E(p.name||p.path||p.id)}</option>`).join('');
+    if(prev&&[...sel.options].some(o=>o.value===prev)){sel.value=prev}
   }catch(e){}
 }
 document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
@@ -352,7 +354,8 @@ function errorDetailModal(id){const e=errorsCache.find(x=>x.id===id);if(!e)retur
 async function saveError(id){try{const fixes=document.getElementById('ee-fixes').value.split('\n').map(x=>x.trim()).filter(Boolean);
   await api('/errors/'+id,{method:'PATCH',body:{root_cause:document.getElementById('ee-rc').value.trim()||null,resolution:document.getElementById('ee-res').value.trim()||null,
     attempted_fixes:fixes,file_paths:document.getElementById('ee-files').value.split(',').map(x=>x.trim()).filter(Boolean),tags:document.getElementById('ee-tags').value.split(',').map(x=>x.trim()).filter(Boolean)}});
-  closeModal();toast('Error pattern updated');loadErrors()}catch(e){toast('Failed','err')}}}
+  closeModal();toast('Error pattern updated');loadErrors()}catch(e){toast('Failed','err')}
+}
 
 async function loadStatus(){const g=document.getElementById('sg');g.innerHTML='<div style="color:var(--text-muted);padding:20px">Loading...</div>';
   try{const[h,s]=await Promise.all([api('/health'),api('/stats')]);
@@ -370,6 +373,7 @@ async function loadStatus(){const g=document.getElementById('sg');g.innerHTML='<
 let pollTimer=null;
 function getActiveView(){const t=document.querySelector('.tab.active');return t?t.dataset.view:null}
 function pollActiveTab(){const v=getActiveView();if(!v)return;
+  loadProjects();
   ({kanban:loadTodos,timeline:loadTL,notes:loadNotes,instructions:loadInstructions,errors:loadErrors,status:loadStatus})[v]?.()}
 function startPolling(){stopPolling();pollTimer=setInterval(pollActiveTab,3000)}
 function stopPolling(){if(pollTimer){clearInterval(pollTimer);pollTimer=null}}
