@@ -602,7 +602,7 @@ export async function getRecentChanges(projectId: string, sinceHours = 24) {
   const pool = getPool();
   const hours = Math.max(1, Math.floor(sinceHours));
 
-  const [snapshots, todos, notes, completedTodos] = await Promise.all([
+  const timeQueries = await Promise.all([
     pool.query(
       `SELECT summary, module_focus, tags, created_at
        FROM snapshots WHERE project_id = $1 AND created_at > now() - make_interval(hours => $2)
@@ -629,8 +629,46 @@ export async function getRecentChanges(projectId: string, sinceHours = 24) {
     ),
   ]);
 
+  let [snapshots, todos, notes, completedTodos] = timeQueries;
+  const hasTimeResults = timeQueries.some(q => q.rows.length > 0);
+  let fallback = false;
+
+  if (!hasTimeResults) {
+    fallback = true;
+    [snapshots, todos, notes, completedTodos] = await Promise.all([
+      pool.query(
+        `SELECT summary, module_focus, tags, created_at
+         FROM snapshots WHERE project_id = $1
+         ORDER BY created_at DESC LIMIT 5`,
+        [projectId]
+      ),
+      pool.query(
+        `SELECT title, status, priority, tags, created_at
+         FROM todos WHERE project_id = $1
+         ORDER BY created_at DESC LIMIT 5`,
+        [projectId]
+      ),
+      pool.query(
+        `SELECT content, category, tags, created_at
+         FROM notes WHERE project_id = $1
+         ORDER BY created_at DESC LIMIT 5`,
+        [projectId]
+      ),
+      pool.query(
+        `SELECT title, completed_at
+         FROM todos WHERE project_id = $1 AND completed_at IS NOT NULL
+         ORDER BY completed_at DESC LIMIT 5`,
+        [projectId]
+      ),
+    ]);
+  }
+
   const parts: string[] = [];
-  parts.push(`Changes in last ${sinceHours}h:`);
+  if (fallback) {
+    parts.push(`No changes in last ${sinceHours}h. Last recorded activity:`);
+  } else {
+    parts.push(`Changes in last ${sinceHours}h:`);
+  }
 
   if (snapshots.rows.length) {
     parts.push(`\n${snapshots.rows.length} snapshot(s):`);
@@ -654,7 +692,7 @@ export async function getRecentChanges(projectId: string, sinceHours = 24) {
   }
 
   const hasChanges = snapshots.rows.length + notes.rows.length + todos.rows.length + completedTodos.rows.length > 0;
-  if (!hasChanges) parts.push("  No changes recorded in this period.");
+  if (!hasChanges) parts.push("  No activity recorded for this project.");
 
   return {
     narrative: parts.join("\n"),
