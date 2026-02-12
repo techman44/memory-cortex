@@ -22,6 +22,8 @@ If `get_project_brief` returns no brief, this is a new project. Perform initial 
 - **When creating or discovering a task** → `add_todo`
 - **When finishing a task** → `complete_todo`
 - **When blocked** → `update_todo` with status "blocked" and blocked_reason
+- **After diagnosing an error** → `log_error_pattern` with root cause and resolution
+- **Before fixing an error** → `check_error_patterns` to see if it's been solved before
 
 ### Before Context Gets Large
 When conversation is getting long or you sense compression may happen:
@@ -55,104 +57,21 @@ When you notice you may have lost context (conversation feels shorter, or you're
 **When uncertain about conventions or patterns:**
 → Call `get_project_brief` — conventions are stored there.
 
+**Before fixing any error:**
+→ Call `check_error_patterns` — a known resolution may already exist.
+
 ## Write Triggers — When to Save Memory
 
 | Event | Action |
 |---|---|
 | Architectural decision made | `add_note` category="decision" |
-| Bug found and diagnosed | `add_note` category="debug" |
+| Bug found and diagnosed | `log_error_pattern` with root cause and resolution |
 | New pattern or convention established | `add_note` category="architecture" + update `set_project_brief` if fundamental |
 | Useful reference discovered | `add_note` category="reference" |
 | Milestone completed | `create_snapshot` + `complete_todo` |
 | New work item identified | `add_todo` |
 | Major refactor or structural change | `create_snapshot` + update `set_project_brief` |
 | Before ending session | `create_snapshot` |
-
-## Tool Quick Reference
-
-| Tool | Purpose | When |
-|---|---|---|
-| `get_project_brief` | Stable project identity | Session start, re-orientation |
-| `set_project_brief` | Update project identity | First discovery, architecture changes |
-| `session_sync` | Full working context restore | Session start, post-compression |
-| `get_recent_changes` | What evolved recently | Session start, catching up |
-| `create_snapshot` | Capture point-in-time state | Milestones, pre-compression, session end |
-| `retrieve_memory` | Search past knowledge | Before decisions, when uncertain |
-| `add_note` | Quick freeform memory | Decisions, debug, architecture, references |
-| `list_notes` | Browse notes by category | Reviewing stored knowledge |
-| `delete_note` | Permanently remove a note | Cleaning up outdated notes |
-| `add_todo` / `update_todo` / `complete_todo` / `delete_todo` | Task management | Throughout work |
-| `list_todos` | Kanban board view | Checking task state |
-| `log_error_pattern` | Log error with root cause/resolution | After diagnosing non-trivial errors |
-| `check_error_patterns` | Search previously seen errors | BEFORE attempting to fix an error |
-| `list_error_patterns` | List all error patterns | Reviewing error history |
-| `add_instruction` / `get_instructions` / `remove_instruction` | Persistent directives | Rules like "always use bun" |
-| `get_file_context` | All context for a specific file | Before modifying unfamiliar files |
-| `summarize_project` | Condensed state overview | Pre-compression, status checks |
-| `diff_snapshots` | Compare two points in time | Understanding evolution |
-| `delete_project` | Cascading delete of all project data | Project cleanup (irreversible) |
-| `prune_memory` | Clean old entries | Maintenance |
-| `system_status` | Health check | Troubleshooting |
-
-## Architecture
-
-- **mcp-server/**: TypeScript MCP stdio server + Express API server source
-- **api-server/**: Docker build context for API (copies of mcp-server/src — must sync after changes)
-- **embedding-service/**: Python FastAPI with sentence-transformers (all-MiniLM-L6-v2, 384-dim)
-- **web-ui/**: nginx SPA dashboard at port 41300
-- **db/**: PostgreSQL + pgvector schema at port 41432
-- Docker Compose orchestration, all services on 41xxx ports
-
-## API Endpoints (api-server.ts)
-
-- `GET /api/health` | `GET /api/projects` | `POST /api/projects` | `DELETE /api/projects/:id`
-- `GET /api/stats`
-- `GET /api/snapshots` | `GET /api/snapshots/:id` | `POST /api/snapshots` | `POST /api/snapshots/diff`
-- `GET /api/todos` | `POST /api/todos` | `PATCH /api/todos/:id` | `POST /api/todos/:id/complete` | `DELETE /api/todos/:id`
-- `GET /api/notes` | `POST /api/notes` | `DELETE /api/notes/:id`
-- `POST /api/search`
-- `GET /api/summary` | `GET /api/session`
-- `POST /api/prune`
-- `GET /api/brief` | `POST /api/brief`
-- `GET /api/changes`
-- `GET /api/errors` | `POST /api/errors` | `POST /api/errors/check`
-- `GET /api/instructions` | `POST /api/instructions` | `DELETE /api/instructions/:id`
-- `GET /api/files/context`
-
-## DB Tables
-
-projects, sessions, snapshots, todos, notes, memory_embeddings, project_brief, error_patterns, instructions
-
-## Enum Values (must match DB CHECK constraints)
-
-- **error_type**: build, runtime, type, test, dependency, config, network, general, other
-- **instruction category**: general, build, style, workflow, constraint, security, testing, other
-- **note category**: decision, debug, architecture, reference, general
-- **todo status**: todo, in_progress, blocked, done
-
-## Key Technical Details
-
-- Project scoping via `project_id` (sha256 of absolute path, first 12 chars)
-- Dedup via pg_trgm similarity (>0.8 for notes/instructions, >0.7 for errors)
-- Embedding graceful fallback — structured ops work without embedding service
-- Atomic upsert for project_brief via ON CONFLICT
-
-## Build & Deploy Workflow
-
-1. Edit source in `mcp-server/src/`
-2. `cd mcp-server && npm run build` — compiles to `mcp-server/build/`
-3. `./sync-api-server.sh` — copies changed files to `api-server/src/`
-4. `docker compose build api-server && docker compose up -d api-server`
-5. MCP stdio picks up changes on next session restart
-
-## Ports (all 41xxx — do NOT change without asking)
-
-| Service | Port |
-|---|---|
-| PostgreSQL | 41432 |
-| Embedding Service | 41100 |
-| API Server | 41200 |
-| Web UI | 41300 |
 
 ## Important Rules
 
