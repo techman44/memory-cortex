@@ -26,7 +26,9 @@ import {
   addNote,
   listNotes,
   deleteNote,
+  updateNote,
   listErrorPatterns,
+  updateErrorPattern,
   retrieveMemory,
   summarizeProject,
   sessionSync,
@@ -40,6 +42,7 @@ import {
   addInstruction,
   getInstructions,
   removeInstruction,
+  updateInstruction,
   getFileContext,
 } from "./tools.js";
 
@@ -156,6 +159,11 @@ app.post("/api/notes", async (req, res) => {
   catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 
+app.patch("/api/notes/:id", async (req, res) => {
+  try { res.json(await updateNote(pid(req), req.params.id, req.body)); }
+  catch (err: any) { res.status(500).json({ error: err.message }); }
+});
+
 app.delete("/api/notes/:id", async (req, res) => {
   try { res.json(await deleteNote(pid(req), req.params.id)); }
   catch (err: any) { res.status(500).json({ error: err.message }); }
@@ -212,6 +220,11 @@ app.post("/api/errors", async (req, res) => {
   catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 
+app.patch("/api/errors/:id", async (req, res) => {
+  try { res.json(await updateErrorPattern(pid(req), req.params.id, req.body)); }
+  catch (err: any) { res.status(500).json({ error: err.message }); }
+});
+
 app.post("/api/errors/check", async (req, res) => {
   try { res.json(await checkErrorPatterns(pid(req), req.body.error_message, req.body.limit)); }
   catch (err: any) { res.status(500).json({ error: err.message }); }
@@ -225,6 +238,11 @@ app.get("/api/instructions", async (req, res) => {
 
 app.post("/api/instructions", async (req, res) => {
   try { res.json(await addInstruction(pid(req), req.body)); }
+  catch (err: any) { res.status(500).json({ error: err.message }); }
+});
+
+app.patch("/api/instructions/:id", async (req, res) => {
+  try { res.json(await updateInstruction(pid(req), req.params.id, req.body)); }
   catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 

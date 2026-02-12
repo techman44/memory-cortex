@@ -76,7 +76,7 @@ input:focus,textarea:focus,select:focus{border-color:var(--accent)}textarea{resi
 .instr-remove{font-size:11px;color:var(--red);cursor:pointer;padding:4px 8px;border-radius:4px;border:1px solid transparent}.instr-remove:hover{border-color:var(--red);background:rgba(255,107,107,.1)}
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:100;opacity:0;pointer-events:none;transition:opacity .2s}
 .modal-overlay.open{opacity:1;pointer-events:all}
-.modal{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-lg);width:90%;max-width:520px;max-height:85vh;overflow-y:auto;padding:24px}
+.modal{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-lg);width:90%;max-width:720px;max-height:85vh;overflow-y:auto;padding:24px}
 .modal h2{font-size:16px;font-weight:600;margin-bottom:16px}.form-group{margin-bottom:14px}
 .form-group label{display:block;font-size:12px;color:var(--text-dim);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px}
 .modal input,.modal textarea,.modal select{width:100%}.form-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:20px}
@@ -170,9 +170,6 @@ async function loadProjects(){
     sel.innerHTML='<option value="">All Projects</option>'+projects.map(p=>`<option value="${E(p.id)}">${E(p.name||p.path||p.id)}</option>`).join('');
   }catch(e){}
 }
-function switchProject(){currentProject=document.getElementById('project-select').value;loadTodos();
-  const av=document.querySelector('.tab.active');if(av){const v=av.dataset.view;({timeline:loadTL,notes:loadNotes,status:loadStatus,instructions:loadInstructions,errors:loadErrors})[v]?.()}}
-
 document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
   document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
   document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));
@@ -270,14 +267,16 @@ async function loadNotes(){try{const cat=document.getElementById('nf').value;con
     <div style="font-family:var(--mono);font-size:11px;color:var(--text-muted);margin-top:8px">${new Date(n.created_at).toLocaleString()}</div></div>`).join('')}catch(e){toast('Load failed','err')}}
 
 function noteDetailModal(id){const n=notesCache.find(x=>x.id===id);if(!n)return;
-  openModal(`<h2>Note Detail</h2>
-    <div class="detail-row"><span class="dl">Category</span><span class="dv"><span class="note-cat cat-${n.category}" style="margin:0">${E(n.category)}</span></span></div>
-    <div class="detail-row"><span class="dl">Created</span><span class="dv" style="font-family:var(--mono);font-size:12px">${new Date(n.created_at).toLocaleString()}</span></div>
-    <div style="font-size:13px;line-height:1.6;white-space:pre-wrap;padding:12px;background:var(--bg);border-radius:6px;margin:12px 0">${E(n.content)}</div>
-    ${(n.tags||[]).length?`<div class="detail-row"><span class="dl">Tags</span><span class="dv">${n.tags.map(t=>`<span class="tag">${E(t)}</span>`).join(' ')}</span></div>`:''}
-    ${(n.related_files||[]).length?`<div class="detail-row"><span class="dl">Files</span><span class="dv">${n.related_files.map(f=>`<div style="font-family:var(--mono);font-size:11px">${E(f)}</div>`).join('')}</span></div>`:''}
-    <button class="btn-danger-block" onclick="deleteNote('${n.id}')">Delete Note</button>
-    <div class="form-actions"><button class="btn btn-secondary" onclick="closeModal()">Close</button></div>`)}
+  openModal(`<h2>Edit Note</h2>
+    <div class="form-group"><label>Content</label><textarea id="en-content" rows="6">${E(n.content)}</textarea></div>
+    <div class="form-group"><label>Category</label><select id="en-cat"><option value="general"${n.category==='general'?' selected':''}>General</option><option value="decision"${n.category==='decision'?' selected':''}>Decision</option><option value="debug"${n.category==='debug'?' selected':''}>Debug</option><option value="architecture"${n.category==='architecture'?' selected':''}>Architecture</option><option value="reference"${n.category==='reference'?' selected':''}>Reference</option></select></div>
+    <div class="form-group"><label>Tags</label><input id="en-tags" value="${(n.tags||[]).join(', ')}"></div>
+    <div class="form-group"><label>Related Files</label><input id="en-files" value="${(n.related_files||[]).join(', ')}" placeholder="comma-separated file paths"></div>
+    <p style="font-family:var(--mono);font-size:11px;color:var(--text-muted);margin-top:8px">Created: ${new Date(n.created_at).toLocaleString()}</p>
+    <div class="form-actions"><button class="btn btn-danger" onclick="deleteNote('${n.id}')">Delete</button><button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="saveNote('${n.id}')">Save</button></div>`)}
+async function saveNote(id){try{await api('/notes/'+id,{method:'PATCH',body:{content:document.getElementById('en-content').value.trim(),category:document.getElementById('en-cat').value,
+  tags:document.getElementById('en-tags').value.split(',').map(x=>x.trim()).filter(Boolean),related_files:document.getElementById('en-files').value.split(',').map(x=>x.trim()).filter(Boolean)}});
+  closeModal();toast('Note updated');loadNotes()}catch(e){toast('Failed','err')}}
 async function deleteNote(id){if(!confirm('Delete this note?'))return;
   try{await api('/notes/'+id,{method:'DELETE'});closeModal();toast('Note deleted');loadNotes()}catch(e){toast('Failed','err')}}
 
@@ -307,14 +306,16 @@ async function loadInstructions(){try{const instrs=await api('/instructions');in
     <div class="instr-content"><div class="instr-cat">${E(i.category)}${i.priority>0?' · priority '+i.priority:''}</div>${E(i.content)}</div></div>`).join('')}catch(e){toast('Load failed','err')}}
 
 function instrDetailModal(id){const i=instrsCache.find(x=>x.id===id);if(!i)return;
-  openModal(`<h2>Instruction Detail</h2>
-    <div class="detail-row"><span class="dl">Category</span><span class="dv"><span class="instr-cat" style="margin:0">${E(i.category)}</span></span></div>
-    <div class="detail-row"><span class="dl">Priority</span><span class="dv">${i.priority===0?'Normal':i.priority===1?'High':'Critical'}</span></div>
-    <div class="detail-row"><span class="dl">Created</span><span class="dv" style="font-family:var(--mono);font-size:12px">${new Date(i.created_at).toLocaleString()}</span></div>
-    <div style="font-size:13px;line-height:1.6;white-space:pre-wrap;padding:12px;background:var(--bg);border-radius:6px;margin:12px 0">${E(i.content)}</div>
-    ${(i.tags||[]).length?`<div class="detail-row"><span class="dl">Tags</span><span class="dv">${i.tags.map(t=>`<span class="tag">${E(t)}</span>`).join(' ')}</span></div>`:''}
-    <button class="btn-danger-block" onclick="removeInstrFromModal('${i.id}')">Delete Instruction</button>
-    <div class="form-actions"><button class="btn btn-secondary" onclick="closeModal()">Close</button></div>`)}
+  openModal(`<h2>Edit Instruction</h2>
+    <div class="form-group"><label>Content</label><textarea id="ei-content" rows="4">${E(i.content)}</textarea></div>
+    <div class="form-group"><label>Category</label><select id="ei-cat"><option value="general"${i.category==='general'?' selected':''}>General</option><option value="build"${i.category==='build'?' selected':''}>Build</option><option value="style"${i.category==='style'?' selected':''}>Style</option><option value="workflow"${i.category==='workflow'?' selected':''}>Workflow</option><option value="constraint"${i.category==='constraint'?' selected':''}>Constraint</option><option value="security"${i.category==='security'?' selected':''}>Security</option><option value="testing"${i.category==='testing'?' selected':''}>Testing</option><option value="other"${i.category==='other'?' selected':''}>Other</option></select></div>
+    <div class="form-group"><label>Priority</label><select id="ei-pri"><option value="0"${i.priority===0?' selected':''}>Normal</option><option value="1"${i.priority===1?' selected':''}>High</option><option value="2"${i.priority>=2?' selected':''}>Critical</option></select></div>
+    <div class="form-group"><label>Tags</label><input id="ei-tags" value="${(i.tags||[]).join(', ')}"></div>
+    <p style="font-family:var(--mono);font-size:11px;color:var(--text-muted);margin-top:8px">Created: ${new Date(i.created_at).toLocaleString()}</p>
+    <div class="form-actions"><button class="btn btn-danger" onclick="removeInstrFromModal('${i.id}')">Delete</button><button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="saveInstr('${i.id}')">Save</button></div>`)}
+async function saveInstr(id){try{await api('/instructions/'+id,{method:'PATCH',body:{content:document.getElementById('ei-content').value.trim(),category:document.getElementById('ei-cat').value,
+  priority:+document.getElementById('ei-pri').value,tags:document.getElementById('ei-tags').value.split(',').map(x=>x.trim()).filter(Boolean)}});
+  closeModal();toast('Instruction updated');loadInstructions()}catch(e){toast('Failed','err')}}
 async function removeInstrFromModal(id){if(!confirm('Remove instruction?'))return;
   try{await api('/instructions/'+id,{method:'DELETE'});closeModal();toast('Removed');loadInstructions()}catch(e){toast('Failed','err')}}
 
@@ -341,13 +342,17 @@ function errorDetailModal(id){const e=errorsCache.find(x=>x.id===id);if(!e)retur
     <div class="detail-row"><span class="dl">Occurrences</span><span class="dv"><span class="occurrence-badge">${e.occurrence_count||1}x</span></span></div>
     <div class="detail-row"><span class="dl">First Seen</span><span class="dv" style="font-family:var(--mono);font-size:12px">${new Date(e.created_at).toLocaleString()}</span></div>
     <div class="detail-row"><span class="dl">Last Seen</span><span class="dv" style="font-family:var(--mono);font-size:12px">${new Date(e.last_seen_at||e.created_at).toLocaleString()}</span></div>
-    <div class="snapshot-section"><h4>Error Message</h4><pre>${E(e.error_message)}</pre></div>
-    ${e.root_cause?`<div class="snapshot-section" style="border-left-color:var(--amber)"><h4>Root Cause</h4><pre>${E(e.root_cause)}</pre></div>`:''}
-    ${e.resolution?`<div class="snapshot-section" style="border-left-color:var(--green)"><h4>Resolution</h4><pre>${E(e.resolution)}</pre></div>`:''}
-    ${e.attempted_fixes&&e.attempted_fixes.length?`<div class="snapshot-section" style="border-left-color:var(--red)"><h4>Attempted Fixes</h4><ul>${e.attempted_fixes.map(f=>`<li>${E(f)}</li>`).join('')}</ul></div>`:''}
-    ${(e.file_paths||[]).length?`<div class="snapshot-section"><h4>Files</h4><ul>${e.file_paths.map(f=>`<li style="font-family:var(--mono);font-size:11px">${E(f)}</li>`).join('')}</ul></div>`:''}
-    ${(e.tags||[]).length?`<div style="display:flex;gap:6px;margin-top:12px;flex-wrap:wrap">${e.tags.map(t=>`<span class="tag">${E(t)}</span>`).join('')}</div>`:''}
-    <div class="form-actions" style="margin-top:20px"><button class="btn btn-secondary" onclick="closeModal()">Close</button></div>`)}
+    <div class="snapshot-section"><h4>Error Message (read-only)</h4><pre>${E(e.error_message)}</pre></div>
+    <div class="form-group" style="margin-top:12px"><label>Root Cause</label><textarea id="ee-rc" rows="3">${E(e.root_cause||'')}</textarea></div>
+    <div class="form-group"><label>Resolution</label><textarea id="ee-res" rows="3">${E(e.resolution||'')}</textarea></div>
+    <div class="form-group"><label>Attempted Fixes (one per line)</label><textarea id="ee-fixes" rows="3">${E((e.attempted_fixes||[]).join('\n'))}</textarea></div>
+    <div class="form-group"><label>File Paths</label><input id="ee-files" value="${(e.file_paths||[]).join(', ')}" placeholder="comma-separated"></div>
+    <div class="form-group"><label>Tags</label><input id="ee-tags" value="${(e.tags||[]).join(', ')}"></div>
+    <div class="form-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="saveError('${e.id}')">Save</button></div>`)}
+async function saveError(id){try{const fixes=document.getElementById('ee-fixes').value.split('\n').map(x=>x.trim()).filter(Boolean);
+  await api('/errors/'+id,{method:'PATCH',body:{root_cause:document.getElementById('ee-rc').value.trim()||null,resolution:document.getElementById('ee-res').value.trim()||null,
+    attempted_fixes:fixes,file_paths:document.getElementById('ee-files').value.split(',').map(x=>x.trim()).filter(Boolean),tags:document.getElementById('ee-tags').value.split(',').map(x=>x.trim()).filter(Boolean)}});
+  closeModal();toast('Error pattern updated');loadErrors()}catch(e){toast('Failed','err')}}}
 
 async function loadStatus(){const g=document.getElementById('sg');g.innerHTML='<div style="color:var(--text-muted);padding:20px">Loading...</div>';
   try{const[h,s]=await Promise.all([api('/health'),api('/stats')]);
@@ -361,7 +366,30 @@ async function loadStatus(){const g=document.getElementById('sg');g.innerHTML='<
       <div class="status-card"><h3>Error Patterns</h3><div class="big-num">${s.error_patterns}</div></div>
       <div class="status-card"><h3>Instructions</h3><div class="big-num">${s.instructions}</div></div>`}catch(e){g.innerHTML=`<div class="status-card"><h3>Error</h3><p style="color:var(--red)">${e.message}</p></div>`}}
 
-loadProjects();loadTodos();
+// Polling — refresh active tab every 10s
+let pollTimer=null;
+function getActiveView(){const t=document.querySelector('.tab.active');return t?t.dataset.view:null}
+function pollActiveTab(){const v=getActiveView();if(!v)return;
+  ({kanban:loadTodos,timeline:loadTL,notes:loadNotes,instructions:loadInstructions,errors:loadErrors,status:loadStatus})[v]?.()}
+function startPolling(){stopPolling();pollTimer=setInterval(pollActiveTab,10000)}
+function stopPolling(){if(pollTimer){clearInterval(pollTimer);pollTimer=null}}
+
+// Reset poll on tab switch
+document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{startPolling()}));
+
+// Cached project selector
+function switchProject(){currentProject=document.getElementById('project-select').value;
+  localStorage.setItem('cortex-project',currentProject);loadTodos();
+  const av=document.querySelector('.tab.active');if(av){const v=av.dataset.view;({timeline:loadTL,notes:loadNotes,status:loadStatus,instructions:loadInstructions,errors:loadErrors})[v]?.()}}
+
+async function initApp(){
+  await loadProjects();
+  const saved=localStorage.getItem('cortex-project');
+  if(saved){const sel=document.getElementById('project-select');
+    if([...sel.options].some(o=>o.value===saved)){sel.value=saved;currentProject=saved}}
+  loadTodos();startPolling()
+}
+initApp();
 </script>
 </body>
 </html>

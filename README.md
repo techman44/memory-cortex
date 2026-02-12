@@ -1,8 +1,14 @@
 # MCP Memory Cortex
 
-A persistent mid-term memory system for AI-assisted coding workflows. Provides structured memory, task tracking, and session continuity that survives LLM context compressions.
+**Claude is brilliant. But it forgets everything.**
 
-## Architecture
+Every time the context window compresses, every time you start a new session — gone. The architectural decisions you talked through, the bugs you diagnosed together, the conventions you agreed on. You end up re-explaining your project from scratch, watching Claude rediscover things it already knew an hour ago.
+
+Memory Cortex fixes this. It gives Claude a **real, persistent memory** backed by a PostgreSQL database with semantic search. Not a giant text file shoved into the context window — an actual structured memory layer that Claude queries on-demand, writes to as it works, and automatically recovers from after context compression.
+
+The result: Claude remembers your project across sessions. It remembers *why* you chose JWT over sessions. It remembers that port 3000 is taken on your machine. It remembers the bug it fixed last Tuesday and won't re-introduce it. It picks up exactly where it left off, every time.
+
+## How It Actually Works
 
 ```
 Claude Code ──stdio──▶ MCP Server (Node.js)
@@ -15,7 +21,19 @@ Claude Code ──stdio──▶ MCP Server (Node.js)
                                       Web UI ◀── Browser
 ```
 
-**Key design**: The MCP server runs as a **local stdio process** launched by Claude Code (proper MCP protocol via `@modelcontextprotocol/sdk`). The API server runs in Docker alongside postgres/embeddings and serves the Web UI. Both share the same tool implementations.
+The MCP server runs as a **local stdio process** alongside Claude Code — no cloud, no API keys, everything on your machine. The database, embedding service, API server, and web dashboard run in Docker.
+
+### Two-Layer Memory
+
+Memory Cortex stores knowledge in **two complementary layers** inside PostgreSQL:
+
+**Structured layer (SQL)** — Snapshots, todos, notes, error patterns, instructions, and project briefs live in normalized tables. These are retrieved precisely by ID, status, category, tags, or time range. When Claude asks "what are my active tasks?" or "what changed in the last 48 hours?", this layer answers instantly.
+
+**Semantic layer (pgvector)** — Every piece of stored knowledge also gets embedded into a 384-dimensional vector using `all-MiniLM-L6-v2`. This means Claude can search by *meaning*, not just keywords. Asking "how do we handle authentication?" surfaces relevant decisions, debug notes, and architecture snapshots — even if none of them contain the word "authentication". The vectors live in the same Postgres instance via `pgvector`, so there's no separate vector database to manage.
+
+When Claude searches memory, it can use keyword matching (fast, exact), semantic similarity (fuzzy, meaning-based), or both in a hybrid query. The structured layer handles the day-to-day task tracking and state management; the semantic layer handles the "I vaguely remember we solved this before" moments.
+
+**Graceful degradation**: If the embedding service goes down, everything except semantic search keeps working. Todos, snapshots, notes — all still fully functional. Search falls back to keyword-only. No crashes, no errors.
 
 ## Quick Start
 
@@ -92,67 +110,75 @@ In Claude Code, run `/mcp` — you should see `memory-cortex: connected` with 20
 
 ## The Cortex Protocol — Zero-Knowledge CLAUDE.md
 
-The key design principle: **CLAUDE.md contains NO project data.** It is purely a behavioral contract that tells Claude how to use Cortex as its memory layer.
+Here's the problem with stuffing project knowledge into CLAUDE.md: it gets loaded into *every single message*. A 3000-token CLAUDE.md means 3000 tokens of your context window are permanently occupied by static text — text that might be stale, that grows unbounded, and that Claude has to wade through whether it's relevant to the current task or not.
 
-Traditional approach (breaks down at scale):
-```markdown
-# CLAUDE.md — 3000+ tokens loaded every message
-## Architecture
-Express + PostgreSQL, gRPC between services...
-## Decisions
-Chose JWT over sessions because...
-## Tasks
-- Fix auth bug
-- Refactor middleware
+Cortex flips this. **CLAUDE.md contains zero project data.** It's purely a behavioral protocol — a ~200-token instruction set that tells Claude *how to use its memory*, not what to remember. The actual knowledge lives in the database, retrieved on-demand through targeted queries.
+
+```
+Traditional CLAUDE.md                    Cortex CLAUDE.md
+─────────────────────                    ─────────────────
+3000+ tokens, loaded every message       ~200 tokens, loaded every message
+
+## Architecture                          On session start:
+Express + PostgreSQL, gRPC...              → call get_project_brief
+## Decisions                               → call session_sync
+Chose JWT over sessions because...       Before changing APIs:
+## Tasks                                   → call retrieve_memory
+- Fix auth bug                           After decisions:
+- Refactor middleware                      → call add_note
+## Conventions                           Before fixing errors:
+Always use snake_case...                   → call check_error_patterns
+(grows forever, gets stale)              (stays small, knowledge stays current)
 ```
 
-Cortex approach (~200 tokens loaded every message):
-```markdown
-# CLAUDE.md — operating protocol only
-On session start: call get_project_brief + session_sync
-Before changing APIs: call retrieve_memory
-After decisions: call add_note with category "decision"
-...
-```
+### Two-Tier Context Recovery
 
-The project knowledge lives in the database. Claude retrieves it on-demand through targeted tool calls instead of carrying it in every message.
+When Claude starts a session (or recovers from context compression), two tool calls reconstruct full project awareness:
 
-### Two-Tier Retrieval
+**`get_project_brief`** — Returns the stable project identity: tech stack, module map, conventions, constraints. Think of it as the "what is this project" layer. This rarely changes and replaces the static "about" section of traditional CLAUDE.md files.
 
-**Foundational (stable):** `get_project_brief` returns the project identity — tech stack, module structure, conventions, constraints. This rarely changes. It replaces the static "about this project" section of CLAUDE.md.
+**`session_sync`** — Returns the latest snapshot, active todos, recent notes, active instructions, and recent error patterns. This is the "where were we" layer — everything Claude needs to pick up mid-task after a context reset.
 
-**Evolutionary (changing):** `get_recent_changes` returns what happened recently — new snapshots, decisions, task changes. This is the "what did I miss" view that catches Claude up after a gap.
+Two calls, ~400 tokens, and Claude has the same awareness that would take 2000+ tokens of static text — except it's always current, never stale, and doesn't bloat the context window.
 
-Together, two tool calls (~400 tokens total) give Claude the same awareness that would require 2000+ tokens of static CLAUDE.md content, with the critical advantage that it's always current.
-
-### Install into a project
+### Install into Any Project
 
 ```bash
 ./init-project.sh /path/to/your/project
 ```
 
-This will:
-1. Back up any existing CLAUDE.md
-2. Write the Cortex operating protocol as the new CLAUDE.md
-3. Create/update .mcp.json with the memory-cortex MCP server config
+This writes two files:
+1. **CLAUDE.md** — The behavioral protocol (backs up any existing one)
+2. **.mcp.json** — MCP server config pointing to the local stdio server
 
-On the first Claude Code session in that project, Claude will:
-1. Read the CLAUDE.md → learn the Cortex protocol
-2. Call `get_project_brief` → find no brief exists (new project)
-3. Explore the codebase → call `set_project_brief` to establish foundational context
-4. Start building memory from there
+On the first session, Claude reads the protocol, discovers no brief exists yet, explores the codebase, and calls `set_project_brief` to bootstrap its own memory. From there, it builds knowledge organically as it works — saving decisions, logging errors, tracking tasks, snapshotting milestones. Every future session starts with full recall.
 
-## Recommended Workflow
+## What a Session Looks Like
+
+With Cortex installed, Claude follows this cycle automatically — no manual prompting needed:
 
 ```
-Session Start     →  session_sync (restore context)
-Coding            →  add_note for decisions, debug findings
-Milestone         →  create_snapshot (capture architecture state)
-Task Tracking     →  add_todo / update_todo / complete_todo
-Pre-Compression   →  summarize_project (condense before context shrinks)
-Session End       →  create_snapshot (final state capture)
-Next Session      →  session_sync (picks up where you left off)
+┌─ SESSION START ────────────────────────────────────────────┐
+│  session_sync → full context restored in ~400 tokens       │
+│  get_recent_changes → "here's what happened since last time│
+├─ ACTIVE WORK ──────────────────────────────────────────────┤
+│  add_note → captures decisions, debug insights as they     │
+│             happen (not at session end when it's too late)  │
+│  log_error_pattern → records what broke and how it was      │
+│                      fixed so it never repeats              │
+│  check_error_patterns → "have I seen this before?" (yes.)  │
+│  add_todo / complete_todo → task tracking that persists     │
+├─ MILESTONE ────────────────────────────────────────────────┤
+│  create_snapshot → architectural state captured             │
+├─ CONTEXT COMPRESSION ─────────────────────────────────────┤
+│  (automatic) session_sync → recovers everything            │
+│  Claude continues working as if nothing happened           │
+├─ SESSION END ──────────────────────────────────────────────┤
+│  create_snapshot → final state saved for next session       │
+└────────────────────────────────────────────────────────────┘
 ```
+
+The key insight: Claude saves knowledge **as it works**, not at the end of a session. Decisions are recorded the moment they're made. Errors are logged the moment they're diagnosed. If context compresses mid-session, nothing is lost — it was already in the database.
 
 ## Web UI
 
@@ -173,14 +199,6 @@ Open **http://localhost:41300** for:
 | Embedding Service | 41100 | all-MiniLM-L6-v2 (384d) |
 | PostgreSQL | 41432 | Data store + pgvector |
 | MCP Server | stdio | Launched by Claude Code |
-
-## Storage Design
-
-**Structured layer (SQL)**: snapshots, todos, notes, sessions — precise retrieval by ID, status, tags, time.
-
-**Semantic layer (pgvector)**: embedded summaries, architecture notes, decisions, task descriptions — meaning-based retrieval via cosine similarity.
-
-**Graceful degradation**: If the embedding service is down, all structured operations (CRUD on todos, snapshots, notes) continue working. Semantic search returns empty results with no errors.
 
 ## Configuration
 
@@ -211,7 +229,7 @@ docker compose logs -f api-server
 ## Project Structure
 
 ```
-mcp-memory/
+memory-cortex/
 ├── setup.sh                  # One-command setup (build + Docker)
 ├── init-project.sh           # Initialize any project with Cortex
 ├── templates/

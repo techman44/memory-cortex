@@ -342,6 +342,41 @@ export async function listNotes(projectId: string, category?: string, limit = 20
   return rows;
 }
 
+export async function updateNote(projectId: string, id: string, fields: Partial<Omit<NoteParams, 'snapshot_id'>>) {
+  const sets: string[] = [];
+  const vals: any[] = [id, projectId];
+  let idx = 3;
+
+  const allowedFields = ["content", "category", "tags", "related_files"];
+  for (const [key, val] of Object.entries(fields)) {
+    if (val !== undefined && allowedFields.includes(key)) {
+      sets.push(`${key} = $${idx}`);
+      vals.push(val);
+      idx++;
+    }
+  }
+
+  if (sets.length === 0) return { message: "No fields to update" };
+
+  await getPool().query(
+    `UPDATE notes SET ${sets.join(", ")} WHERE id = $1 AND project_id = $2`, vals
+  );
+
+  // Re-embed if content changed
+  if (fields.content) {
+    const vectors = await embed([fields.content]);
+    if (vectors) {
+      await getPool().query(
+        `UPDATE memory_embeddings SET content_text = $1, embedding = $2::vector, created_at = now()
+         WHERE source_type = 'note' AND source_id = $3`,
+        [fields.content, vecLiteral(vectors[0]), id]
+      );
+    }
+  }
+
+  return { id, updated: Object.keys(fields), message: "Note updated" };
+}
+
 // ══════════════════════════════════════════════════════════════
 // Memory Search (hybrid) — with ILIKE escaping fix
 // ══════════════════════════════════════════════════════════════
@@ -907,6 +942,41 @@ export async function removeInstruction(projectId: string, id: string) {
   return { id, message: "Instruction deactivated" };
 }
 
+export async function updateInstruction(projectId: string, id: string, fields: Partial<InstructionParams>) {
+  const sets: string[] = [];
+  const vals: any[] = [id, projectId];
+  let idx = 3;
+
+  const allowedFields = ["content", "category", "priority", "tags"];
+  for (const [key, val] of Object.entries(fields)) {
+    if (val !== undefined && allowedFields.includes(key)) {
+      sets.push(`${key} = $${idx}`);
+      vals.push(val);
+      idx++;
+    }
+  }
+
+  if (sets.length === 0) return { message: "No fields to update" };
+
+  await getPool().query(
+    `UPDATE instructions SET ${sets.join(", ")} WHERE id = $1 AND project_id = $2`, vals
+  );
+
+  // Re-embed if content changed
+  if (fields.content) {
+    const vectors = await embed([fields.content]);
+    if (vectors) {
+      await getPool().query(
+        `UPDATE memory_embeddings SET content_text = $1, embedding = $2::vector, created_at = now()
+         WHERE source_type = 'instruction' AND source_id = $3`,
+        [fields.content, vecLiteral(vectors[0]), id]
+      );
+    }
+  }
+
+  return { id, updated: Object.keys(fields), message: "Instruction updated" };
+}
+
 // ══════════════════════════════════════════════════════════════
 // File Context (cross-table query by file path)
 // ══════════════════════════════════════════════════════════════
@@ -972,6 +1042,49 @@ export async function listErrorPatterns(projectId: string, limit = 50) {
     [projectId, limit]
   );
   return rows;
+}
+
+export async function updateErrorPattern(projectId: string, id: string, fields: Partial<Pick<ErrorPatternParams, 'root_cause' | 'resolution' | 'attempted_fixes' | 'file_paths' | 'tags'>>) {
+  const sets: string[] = [];
+  const vals: any[] = [id, projectId];
+  let idx = 3;
+
+  const allowedFields = ["root_cause", "resolution", "attempted_fixes", "file_paths", "tags"];
+  for (const [key, val] of Object.entries(fields)) {
+    if (val !== undefined && allowedFields.includes(key)) {
+      sets.push(`${key} = $${idx}`);
+      vals.push(val);
+      idx++;
+    }
+  }
+
+  if (sets.length === 0) return { message: "No fields to update" };
+
+  await getPool().query(
+    `UPDATE error_patterns SET ${sets.join(", ")} WHERE id = $1 AND project_id = $2`, vals
+  );
+
+  // Re-embed if resolution or root_cause changed
+  if (fields.resolution || fields.root_cause) {
+    const { rows } = await getPool().query(
+      "SELECT error_message, root_cause, resolution FROM error_patterns WHERE id = $1 AND project_id = $2",
+      [id, projectId]
+    );
+    if (rows[0]) {
+      const ep = rows[0];
+      const text = `Error: ${ep.error_message}. Cause: ${ep.root_cause || "unknown"}. Fix: ${ep.resolution || "unknown"}`;
+      const vectors = await embed([text]);
+      if (vectors) {
+        await getPool().query(
+          `UPDATE memory_embeddings SET content_text = $1, embedding = $2::vector, created_at = now()
+           WHERE source_type = 'error_pattern' AND source_id = $3`,
+          [text, vecLiteral(vectors[0]), id]
+        );
+      }
+    }
+  }
+
+  return { id, updated: Object.keys(fields), message: "Error pattern updated" };
 }
 
 // ══════════════════════════════════════════════════════════════
