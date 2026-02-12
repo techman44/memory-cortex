@@ -18,6 +18,7 @@ If `get_project_brief` returns no brief, this is a new project. Perform initial 
 ### During Active Work
 - **After making an architectural decision** → `add_note` with category "decision"
 - **After debugging something non-obvious** → `add_note` with category "debug"
+- **After creating or finalizing a plan** (architecture, feature, refactor, multi-step work) → `add_note` category="decision" with the full plan: goals, steps, rationale, open questions. If large, also `create_snapshot`. Plans are expensive to recreate — persist them immediately.
 - **After completing a milestone or significant change** → `create_snapshot`
 - **When creating or discovering a task** → `add_todo`
 - **When finishing a task** → `complete_todo`
@@ -68,6 +69,8 @@ When you notice you may have lost context (conversation feels shorter, or you're
 | Bug found and diagnosed | `log_error_pattern` with root cause and resolution |
 | New pattern or convention established | `add_note` category="architecture" + update `set_project_brief` if fundamental |
 | Useful reference discovered | `add_note` category="reference" |
+| Plan created or finalized | `add_note` category="decision" with full plan. Also `create_snapshot` if large. |
+| Code committed to git | `create_snapshot` with commit hash and change summary — immediately after push |
 | Milestone completed | `create_snapshot` + `complete_todo` |
 | New work item identified | `add_todo` |
 | Major refactor or structural change | `create_snapshot` + update `set_project_brief` |
