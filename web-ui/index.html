@@ -179,7 +179,7 @@ document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
   ({timeline:loadTL,notes:loadNotes,status:loadStatus,instructions:loadInstructions,errors:loadErrors})[t.dataset.view]?.();
 }));
 
-async function loadTodos(){todos=await api('/todos');renderBoard()}
+async function loadTodos(){todos=await api('/todos?status=all');renderBoard()}
 function renderBoard(){
   ['todo','in_progress','blocked','done'].forEach(s=>{
     const c=document.querySelector(`[data-drop="${s}"]`),n=document.querySelector(`[data-count="${s}"]`),items=todos.board[s]||[];

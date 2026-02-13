@@ -5,9 +5,13 @@ This project uses **MCP Memory Cortex** for all persistent context. Do NOT store
 ## Session Lifecycle
 
 ### On Session Start (ALWAYS do this first)
-1. Call `get_project_brief` — loads foundational project identity (stack, modules, conventions, constraints)
-2. Call `session_sync` — loads latest snapshot, active todos, recent notes
-3. Call `get_recent_changes` with `since_hours: 48` — understand what evolved recently
+1. Call `get_project_brief` — loads foundational project identity (stack, modules, conventions, constraints) (~2k tokens)
+2. Call `get_project_index` — lightweight catalog of everything available: counts, active todos, snapshot summaries, notes by category, errors, instructions — all with IDs (~800 tokens)
+3. Optionally: Call `get_recent_changes` with `since_hours: 48` — only if the index shows recent activity
+
+**On-demand loading:** After reviewing the index, call `get_note(id)`, `get_todo(id)`, `get_error_pattern(id)`, or `get_snapshot(id)` to fetch full details only for items relevant to your current task.
+
+**Full context recovery:** `session_sync` is still available for when you need everything at once (e.g., after context compression).
 
 If `get_project_brief` returns no brief, this is a new project. Perform initial discovery:
 - Read the project's package.json, main config files, and directory structure
@@ -45,8 +49,8 @@ When conversation is getting long or you sense compression may happen:
 ### After Context Compression
 When you notice you may have lost context (conversation feels shorter, or you're unsure about details):
 1. Call `get_project_brief` — re-orient on project fundamentals
-2. Call `session_sync` — restore working state
-3. Call `get_recent_changes` — catch up on recent momentum
+2. Call `get_project_index` — quick overview of everything available (or `session_sync` for full dump)
+3. Fetch specific items by ID as needed: `get_note(id)`, `get_todo(id)`, `get_error_pattern(id)`, `get_snapshot(id)`
 
 ### On Session End
 1. Call `create_snapshot` with a summary of what was accomplished

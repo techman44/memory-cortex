@@ -44,6 +44,10 @@ import {
   removeInstruction,
   updateInstruction,
   getFileContext,
+  getProjectIndex,
+  getNote,
+  getTodo,
+  getErrorPattern,
 } from "./tools.js";
 
 dotenv.config();
@@ -124,7 +128,7 @@ app.post("/api/snapshots/diff", async (req, res) => {
 app.get("/api/todos", async (req, res) => {
   try {
     const tags = req.query.tags ? (req.query.tags as string).split(",") : undefined;
-    res.json(await listTodos(pid(req), req.query.status as string || "all", tags));
+    res.json(await listTodos(pid(req), req.query.status as string || "active", tags));
   } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 
@@ -249,6 +253,37 @@ app.patch("/api/instructions/:id", async (req, res) => {
 app.delete("/api/instructions/:id", async (req, res) => {
   try { res.json(await removeInstruction(pid(req), req.params.id)); }
   catch (err: any) { res.status(500).json({ error: err.message }); }
+});
+
+// ── Project Index ─────────────────────────────────────────────
+app.get("/api/index", async (req, res) => {
+  try { res.json(await getProjectIndex(pid(req))); }
+  catch (err: any) { res.status(500).json({ error: err.message }); }
+});
+
+// ── Single-Item Getters ──────────────────────────────────────
+app.get("/api/notes/:id", async (req, res) => {
+  try {
+    const note = await getNote(pid(req), req.params.id);
+    if (!note) return res.status(404).json({ error: "Note not found" });
+    res.json(note);
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
+});
+
+app.get("/api/todos/:id", async (req, res) => {
+  try {
+    const todo = await getTodo(pid(req), req.params.id);
+    if (!todo) return res.status(404).json({ error: "Todo not found" });
+    res.json(todo);
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
+});
+
+app.get("/api/errors/:id", async (req, res) => {
+  try {
+    const pattern = await getErrorPattern(pid(req), req.params.id);
+    if (!pattern) return res.status(404).json({ error: "Error pattern not found" });
+    res.json(pattern);
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 
 // ── File Context ──────────────────────────────────────────────

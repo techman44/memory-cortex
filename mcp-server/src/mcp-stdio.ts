@@ -46,6 +46,10 @@ import {
   getInstructions,
   removeInstruction,
   getFileContext,
+  getProjectIndex,
+  getNote,
+  getTodo,
+  getErrorPattern,
 } from "./tools.js";
 
 dotenv.config();
@@ -64,6 +68,27 @@ const server = new McpServer({
   name: "memory-cortex",
   version: "1.0.0",
 });
+
+// ── Coercion helpers for LLM-friendly input ─────────────────────
+// LLMs frequently pass numbers as strings ("1" instead of 1) and
+// arrays as JSON strings ("[\"a\"]" instead of ["a"]). These helpers
+// make zod schemas forgiving about those mistakes.
+const coercedNumber = z.preprocess(
+  (val) => (typeof val === "string" ? Number(val) : val),
+  z.number()
+);
+
+function coercedStringArray() {
+  return z.preprocess(
+    (val) => {
+      if (typeof val === "string") {
+        try { return JSON.parse(val); } catch { return val; }
+      }
+      return val;
+    },
+    z.array(z.string())
+  );
+}
 
 // ── Helper: wrap tool result as MCP text content ────────────────
 function textResult(data: any) {
@@ -84,10 +109,10 @@ server.tool(
     summary: z.string().describe("High-level project state summary"),
     architecture_notes: z.string().optional().describe("Current architectural decisions, patterns, tech stack details"),
     module_focus: z.string().optional().describe("Current module or area of active development"),
-    assumptions: z.array(z.string()).optional().describe("Active assumptions the code relies on"),
-    constraints: z.array(z.string()).optional().describe("Known constraints or limitations"),
-    file_paths: z.array(z.string()).optional().describe("Key file paths relevant to current work"),
-    tags: z.array(z.string()).optional().describe("Categorization tags"),
+    assumptions: coercedStringArray().optional().describe("Active assumptions the code relies on"),
+    constraints: coercedStringArray().optional().describe("Known constraints or limitations"),
+    file_paths: coercedStringArray().optional().describe("Key file paths relevant to current work"),
+    tags: coercedStringArray().optional().describe("Categorization tags"),
   },
   async (params) => {
     try { return textResult(await createSnapshot(PROJECT_ID, params)); }
@@ -104,8 +129,8 @@ server.tool(
   {
     query: z.string().describe("What to search for — question, concept, or keyword"),
     mode: z.enum(["semantic", "keyword", "hybrid"]).optional().describe("Search mode (default: hybrid)"),
-    tags: z.array(z.string()).optional().describe("Filter by tags"),
-    limit: z.number().optional().describe("Max results (default 5)"),
+    tags: coercedStringArray().optional().describe("Filter by tags"),
+    limit: coercedNumber.optional().describe("Max results (default 5)"),
     content_type: z.enum(["summary", "architecture", "debug", "note", "decision", "task", "error", "instruction"]).optional().describe("Filter by content category"),
   },
   async (params) => {
@@ -124,10 +149,10 @@ server.tool(
     title: z.string().describe("Task title — clear and actionable"),
     description: z.string().optional().describe("Detailed task description"),
     status: z.enum(["todo", "in_progress", "blocked", "done"]).optional().describe("Initial status (default: todo)"),
-    priority: z.number().min(0).max(2).optional().describe("0=normal, 1=high, 2=critical"),
-    related_files: z.array(z.string()).optional().describe("File paths related to this task"),
+    priority: coercedNumber.pipe(z.number().min(0).max(2)).optional().describe("0=normal, 1=high, 2=critical"),
+    related_files: coercedStringArray().optional().describe("File paths related to this task"),
     snapshot_id: z.string().optional().describe("Link to a specific snapshot"),
-    tags: z.array(z.string()).optional().describe("Categorization tags"),
+    tags: coercedStringArray().optional().describe("Categorization tags"),
     blocked_reason: z.string().optional().describe("Why this task is blocked"),
   },
   async (params) => {
@@ -147,10 +172,10 @@ server.tool(
     title: z.string().optional(),
     description: z.string().optional(),
     status: z.enum(["todo", "in_progress", "blocked", "done"]).optional(),
-    priority: z.number().min(0).max(2).optional(),
-    related_files: z.array(z.string()).optional(),
+    priority: coercedNumber.pipe(z.number().min(0).max(2)).optional(),
+    related_files: coercedStringArray().optional(),
     snapshot_id: z.string().optional(),
-    tags: z.array(z.string()).optional(),
+    tags: coercedStringArray().optional(),
     blocked_reason: z.string().optional(),
   },
   async (params) => {
@@ -192,10 +217,10 @@ server.tool(
 // ══════════════════════════════════════════════════════════════
 server.tool(
   "list_todos",
-  "Return all tasks grouped by status (kanban board view).",
+  "Return tasks grouped by status (kanban board view). Default excludes done tasks for efficiency.",
   {
-    status: z.enum(["todo", "in_progress", "blocked", "done", "all"]).optional().describe("Filter by status (default: all)"),
-    tags: z.array(z.string()).optional().describe("Filter by tags"),
+    status: z.enum(["active", "todo", "in_progress", "blocked", "done", "all"]).optional().describe("Filter: 'active' (default, excludes done), specific status, or 'all'"),
+    tags: coercedStringArray().optional().describe("Filter by tags"),
   },
   async (params) => {
     try { return textResult(await listTodos(PROJECT_ID, params.status, params.tags)); }
@@ -212,8 +237,8 @@ server.tool(
   {
     content: z.string().describe("The note content"),
     category: z.enum(["decision", "debug", "architecture", "reference", "general"]).optional().describe("Note category (default: general)"),
-    tags: z.array(z.string()).optional().describe("Tags for filtering"),
-    related_files: z.array(z.string()).optional().describe("Related file paths"),
+    tags: coercedStringArray().optional().describe("Tags for filtering"),
+    related_files: coercedStringArray().optional().describe("Related file paths"),
     snapshot_id: z.string().optional().describe("Link to a snapshot"),
   },
   async (params) => {
@@ -230,7 +255,7 @@ server.tool(
   "List recent notes, optionally filtered by category.",
   {
     category: z.enum(["decision", "debug", "architecture", "reference", "general"]).optional(),
-    limit: z.number().optional().describe("Max results (default 20)"),
+    limit: coercedNumber.optional().describe("Max results (default 20)"),
   },
   async (params) => {
     try { return textResult(await listNotes(PROJECT_ID, params.category, params.limit)); }
@@ -244,7 +269,7 @@ server.tool(
 server.tool(
   "summarize_project",
   "Condensed project state from latest snapshots, active todos, and recent notes.",
-  { depth: z.number().optional().describe("Number of recent snapshots to include (default 3)") },
+  { depth: coercedNumber.optional().describe("Number of recent snapshots to include (default 3)") },
   async (params) => {
     try { return textResult(await summarizeProject(PROJECT_ID, params.depth)); }
     catch (e: any) { return errorResult(e.message); }
@@ -271,8 +296,8 @@ server.tool(
   "prune_memory",
   "Remove stale memory entries older than N days. Entries with specified tags are preserved.",
   {
-    older_than_days: z.number().describe("Remove entries older than this many days"),
-    keep_tagged: z.array(z.string()).optional().describe("Preserve entries with any of these tags"),
+    older_than_days: coercedNumber.describe("Remove entries older than this many days"),
+    keep_tagged: coercedStringArray().optional().describe("Preserve entries with any of these tags"),
   },
   async (params) => {
     try { return textResult(await pruneMemory(PROJECT_ID, params.older_than_days, params.keep_tagged)); }
@@ -335,7 +360,7 @@ server.tool(
 server.tool(
   "get_recent_changes",
   "What evolved recently: new snapshots, notes, tasks, completions. Use to understand recent momentum.",
-  { since_hours: z.number().optional().describe("Look back this many hours (default 24)") },
+  { since_hours: coercedNumber.optional().describe("Look back this many hours (default 24)") },
   async (params) => {
     try { return textResult(await getRecentChanges(PROJECT_ID, params.since_hours)); }
     catch (e: any) { return errorResult(e.message); }
@@ -364,11 +389,11 @@ server.tool(
   {
     error_message: z.string().describe("The error message or pattern"),
     error_type: z.enum(["build", "runtime", "type", "test", "dependency", "config", "network", "general", "other"]).optional().describe("Error category (default: general)"),
-    attempted_fixes: z.array(z.string()).optional().describe("What was tried (including failed attempts)"),
+    attempted_fixes: coercedStringArray().optional().describe("What was tried (including failed attempts)"),
     root_cause: z.string().optional().describe("What actually caused the error"),
     resolution: z.string().optional().describe("What fixed it"),
-    file_paths: z.array(z.string()).optional().describe("Files involved"),
-    tags: z.array(z.string()).optional().describe("Tags"),
+    file_paths: coercedStringArray().optional().describe("Files involved"),
+    tags: coercedStringArray().optional().describe("Tags"),
   },
   async (params) => {
     try { return textResult(await logErrorPattern(PROJECT_ID, params)); }
@@ -384,7 +409,7 @@ server.tool(
   "Search for previously seen errors matching this message. Call BEFORE attempting to fix an error — a known resolution may already exist.",
   {
     error_message: z.string().describe("The error message to look up"),
-    limit: z.number().optional().describe("Max results (default 3)"),
+    limit: coercedNumber.optional().describe("Max results (default 3)"),
   },
   async (params) => {
     try { return textResult(await checkErrorPatterns(PROJECT_ID, params.error_message, params.limit)); }
@@ -401,8 +426,8 @@ server.tool(
   {
     content: z.string().describe("The instruction text"),
     category: z.enum(["general", "build", "style", "workflow", "constraint", "security", "testing", "other"]).optional().describe("Category (default: general)"),
-    priority: z.number().min(0).max(2).optional().describe("0=normal, 1=high, 2=critical"),
-    tags: z.array(z.string()).optional().describe("Tags"),
+    priority: coercedNumber.pipe(z.number().min(0).max(2)).optional().describe("0=normal, 1=high, 2=critical"),
+    tags: coercedStringArray().optional().describe("Tags"),
   },
   async (params) => {
     try { return textResult(await addInstruction(PROJECT_ID, params)); }
@@ -468,10 +493,71 @@ server.tool(
 server.tool(
   "list_error_patterns",
   "List all logged error patterns for this project, ordered by most recently seen.",
-  { limit: z.number().optional().describe("Max results (default 50)") },
+  { limit: coercedNumber.optional().describe("Max results (default 50)") },
   async (params) => {
     try { return textResult(await listErrorPatterns(PROJECT_ID, params.limit)); }
     catch (e: any) { return errorResult(e.message); }
+  }
+);
+
+// ══════════════════════════════════════════════════════════════
+// Tool: get_project_index
+// ══════════════════════════════════════════════════════════════
+server.tool(
+  "get_project_index",
+  "Lightweight project catalog (~800 tokens). Returns counts, active todos (title+status), recent snapshot summaries, notes grouped by category (one-line each), error patterns, and active instructions — all with IDs for on-demand detail fetching. Use at session start instead of session_sync for context-efficient loading.",
+  {},
+  async () => {
+    try { return textResult(await getProjectIndex(PROJECT_ID)); }
+    catch (e: any) { return errorResult(e.message); }
+  }
+);
+
+// ══════════════════════════════════════════════════════════════
+// Tool: get_note
+// ══════════════════════════════════════════════════════════════
+server.tool(
+  "get_note",
+  "Fetch full note details by UUID. Use after get_project_index to load specific notes on demand.",
+  { id: z.string().describe("UUID of the note to fetch") },
+  async ({ id }) => {
+    try {
+      const note = await getNote(PROJECT_ID, id);
+      if (!note) return errorResult("Note not found");
+      return textResult(note);
+    } catch (e: any) { return errorResult(e.message); }
+  }
+);
+
+// ══════════════════════════════════════════════════════════════
+// Tool: get_todo
+// ══════════════════════════════════════════════════════════════
+server.tool(
+  "get_todo",
+  "Fetch full todo details by UUID. Use after get_project_index to load specific todos on demand.",
+  { id: z.string().describe("UUID of the todo to fetch") },
+  async ({ id }) => {
+    try {
+      const todo = await getTodo(PROJECT_ID, id);
+      if (!todo) return errorResult("Todo not found");
+      return textResult(todo);
+    } catch (e: any) { return errorResult(e.message); }
+  }
+);
+
+// ══════════════════════════════════════════════════════════════
+// Tool: get_error_pattern
+// ══════════════════════════════════════════════════════════════
+server.tool(
+  "get_error_pattern",
+  "Fetch full error pattern details by UUID. Use after get_project_index to load specific error patterns on demand.",
+  { id: z.string().describe("UUID of the error pattern to fetch") },
+  async ({ id }) => {
+    try {
+      const pattern = await getErrorPattern(PROJECT_ID, id);
+      if (!pattern) return errorResult("Error pattern not found");
+      return textResult(pattern);
+    } catch (e: any) { return errorResult(e.message); }
   }
 );
 

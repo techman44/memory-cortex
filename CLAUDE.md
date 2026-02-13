@@ -6,11 +6,15 @@ This project uses **MCP Memory Cortex** as its single source of truth for all pe
 
 ## BLOCKING PREREQUISITE — Session Startup
 
-**You MUST call these three tools BEFORE doing ANY other work. No exceptions. No deferring. Do it first.**
+**You MUST call these tools BEFORE doing ANY other work. No exceptions. No deferring. Do it first.**
 
-1. `get_project_brief` — loads foundational project identity
-2. `session_sync` — loads latest snapshot, active todos, recent notes
-3. `get_recent_changes` with `since_hours: 48` — understand recent momentum
+1. `get_project_brief` — loads foundational project identity (~2k tokens)
+2. `get_project_index` — lightweight catalog of everything available: counts, active todos, snapshot summaries, notes by category, errors, instructions — all with IDs (~800 tokens). Use this instead of `session_sync` for efficient startup.
+3. Optionally: `get_recent_changes` with `since_hours: 48` — only if the index shows recent activity you need to understand
+
+**On-demand loading:** After reviewing the index, call `get_note(id)`, `get_todo(id)`, `get_error_pattern(id)`, or `get_snapshot(id)` to fetch full details only for items relevant to your current task.
+
+**Full context recovery:** If you need everything at once (e.g., after context compression), `session_sync` is still available and returns all data from all tables.
 
 If `get_project_brief` returns empty, this is a new project. You MUST immediately:
 - Read package.json, config files, and directory structure
@@ -140,8 +144,8 @@ After editing source code, the full sequence is:
 If you notice context may have been lost (conversation feels shorter, details are fuzzy):
 
 1. `get_project_brief` — re-orient immediately
-2. `session_sync` — restore working state
-3. `get_recent_changes` — catch up on what happened
+2. `get_project_index` — quick overview of everything available (or `session_sync` for full dump)
+3. Fetch specific items by ID as needed: `get_note(id)`, `get_todo(id)`, `get_error_pattern(id)`, `get_snapshot(id)`
 
 **Do NOT guess or assume. Re-load from Cortex.**
 

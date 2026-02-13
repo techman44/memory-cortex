@@ -256,12 +256,15 @@ export async function deleteTodo(projectId: string, id: string) {
   return { id, message: "Todo deleted" };
 }
 
-export async function listTodos(projectId: string, status = "all", tags?: string[]) {
-  let sql = `SELECT * FROM todos WHERE project_id = $1`;
+export async function listTodos(projectId: string, status = "active", tags?: string[]) {
+  // "active" excludes done; "all" includes everything; specific status filters to that one
+  const fields = `id, title, status, priority, tags, blocked_reason, created_at, updated_at`;
+  let sql = `SELECT ${fields} FROM todos WHERE project_id = $1`;
   const vals: any[] = [projectId];
   let idx = 2;
 
-  if (status !== "all") { sql += ` AND status = $${idx}`; vals.push(status); idx++; }
+  if (status === "active") { sql += ` AND status != 'done'`; }
+  else if (status !== "all") { sql += ` AND status = $${idx}`; vals.push(status); idx++; }
   if (tags?.length) { sql += ` AND tags && $${idx}`; vals.push(tags); idx++; }
 
   sql += ` ORDER BY priority DESC, created_at ASC`;
@@ -491,28 +494,28 @@ export async function sessionSync(projectId: string) {
   const pool = getPool();
   const [latestSnapshot, activeTodos, recentNotes, recentMemories, instructions, recentErrors] = await Promise.all([
     pool.query(
-      `SELECT * FROM snapshots WHERE project_id = $1 ORDER BY created_at DESC LIMIT 1`,
+      `SELECT id, summary, module_focus, created_at FROM snapshots WHERE project_id = $1 ORDER BY created_at DESC LIMIT 1`,
       [projectId]
     ),
     pool.query(
-      `SELECT * FROM todos WHERE project_id = $1 AND status != 'done' ORDER BY priority DESC, created_at ASC`,
+      `SELECT id, title, status, priority, tags, blocked_reason FROM todos WHERE project_id = $1 AND status != 'done' ORDER BY priority DESC, created_at ASC`,
       [projectId]
     ),
     pool.query(
-      `SELECT * FROM notes WHERE project_id = $1 ORDER BY created_at DESC LIMIT 10`,
+      `SELECT id, category, substring(content from 1 for 150) as content_preview, tags, created_at FROM notes WHERE project_id = $1 ORDER BY created_at DESC LIMIT 10`,
       [projectId]
     ),
     pool.query(
-      `SELECT content_type, content_text, tags, created_at FROM memory_embeddings
+      `SELECT content_type, substring(content_text from 1 for 100) as content_preview, tags, created_at FROM memory_embeddings
        WHERE project_id = $1 ORDER BY created_at DESC LIMIT 10`,
       [projectId]
     ),
     pool.query(
-      `SELECT * FROM instructions WHERE project_id = $1 AND active = true ORDER BY priority DESC, created_at ASC`,
+      `SELECT id, content, category, priority FROM instructions WHERE project_id = $1 AND active = true ORDER BY priority DESC, created_at ASC`,
       [projectId]
     ),
     pool.query(
-      `SELECT error_message, error_type, resolution, occurrence_count, last_seen_at
+      `SELECT id, error_message, error_type, resolution, occurrence_count, last_seen_at
        FROM error_patterns WHERE project_id = $1 ORDER BY last_seen_at DESC LIMIT 5`,
       [projectId]
     ),
@@ -1118,6 +1121,136 @@ export async function deleteProject(projectId: string) {
     deleted: counts,
     message: `Project ${projectId} and all associated data deleted`,
   };
+}
+
+// ══════════════════════════════════════════════════════════════
+// Summary Line Helper
+// ══════════════════════════════════════════════════════════════
+
+function summaryLine(text: string | null | undefined, maxLen = 120): string {
+  if (!text) return "";
+  const firstLine = text.split(/[\n\r]/)[0].trim();
+  if (firstLine.length <= maxLen) return firstLine;
+  return firstLine.substring(0, maxLen - 3) + "...";
+}
+
+// ══════════════════════════════════════════════════════════════
+// Project Index — lightweight catalog for context-efficient startup
+// ══════════════════════════════════════════════════════════════
+
+export async function getProjectIndex(projectId: string) {
+  const pool = getPool();
+
+  const [briefResult, counts, activeTodos, recentSnapshots, notes, errors, instructions] = await Promise.all([
+    pool.query("SELECT project_name, tech_stack FROM project_brief WHERE project_id = $1", [projectId]),
+    pool.query(`
+      SELECT
+        (SELECT count(*)::int FROM snapshots WHERE project_id = $1) as snapshots,
+        (SELECT count(*)::int FROM notes WHERE project_id = $1) as notes,
+        (SELECT count(*)::int FROM todos WHERE project_id = $1 AND status != 'done') as active_todos,
+        (SELECT count(*)::int FROM error_patterns WHERE project_id = $1) as errors,
+        (SELECT count(*)::int FROM instructions WHERE project_id = $1 AND active = true) as instructions
+    `, [projectId]),
+    pool.query(
+      `SELECT id, title, status, priority FROM todos
+       WHERE project_id = $1 AND status != 'done'
+       ORDER BY priority DESC, created_at ASC`,
+      [projectId]
+    ),
+    pool.query(
+      `SELECT id, summary, created_at FROM snapshots
+       WHERE project_id = $1 ORDER BY created_at DESC LIMIT 3`,
+      [projectId]
+    ),
+    pool.query(
+      `SELECT id, content, category FROM notes
+       WHERE project_id = $1 ORDER BY created_at DESC LIMIT 20`,
+      [projectId]
+    ),
+    pool.query(
+      `SELECT id, error_message, error_type, occurrence_count FROM error_patterns
+       WHERE project_id = $1 ORDER BY last_seen_at DESC LIMIT 10`,
+      [projectId]
+    ),
+    pool.query(
+      `SELECT id, content FROM instructions
+       WHERE project_id = $1 AND active = true ORDER BY priority DESC, created_at ASC`,
+      [projectId]
+    ),
+  ]);
+
+  const brief = briefResult.rows[0];
+  const c = counts.rows[0];
+
+  // Group notes by category
+  const notesByCategory: Record<string, { id: string; summary_line: string }[]> = {};
+  for (const n of notes.rows) {
+    const cat = n.category || "general";
+    if (!notesByCategory[cat]) notesByCategory[cat] = [];
+    notesByCategory[cat].push({ id: n.id, summary_line: summaryLine(n.content) });
+  }
+
+  return {
+    project: brief?.project_name || "Unknown",
+    tech_stack_summary: brief?.tech_stack ? summaryLine(brief.tech_stack, 200) : null,
+    counts: {
+      snapshots: c.snapshots,
+      notes: c.notes,
+      active_todos: c.active_todos,
+      errors: c.errors,
+      instructions: c.instructions,
+    },
+    active_todos: activeTodos.rows.map((t: any) => ({
+      id: t.id,
+      title: t.title,
+      status: t.status,
+      priority: t.priority,
+    })),
+    recent_snapshots: recentSnapshots.rows.map((s: any) => ({
+      id: s.id,
+      summary_line: summaryLine(s.summary),
+      created_at: s.created_at,
+    })),
+    notes_by_category: notesByCategory,
+    error_patterns: errors.rows.map((e: any) => ({
+      id: e.id,
+      summary_line: summaryLine(e.error_message),
+      type: e.error_type,
+      occurrences: e.occurrence_count,
+    })),
+    active_instructions: instructions.rows.map((i: any) => ({
+      id: i.id,
+      summary_line: summaryLine(i.content),
+    })),
+  };
+}
+
+// ══════════════════════════════════════════════════════════════
+// Single-Item Getters (by UUID)
+// ══════════════════════════════════════════════════════════════
+
+export async function getNote(projectId: string, id: string) {
+  const { rows } = await getPool().query(
+    "SELECT * FROM notes WHERE id = $1 AND project_id = $2",
+    [id, projectId]
+  );
+  return rows[0] || null;
+}
+
+export async function getTodo(projectId: string, id: string) {
+  const { rows } = await getPool().query(
+    "SELECT * FROM todos WHERE id = $1 AND project_id = $2",
+    [id, projectId]
+  );
+  return rows[0] || null;
+}
+
+export async function getErrorPattern(projectId: string, id: string) {
+  const { rows } = await getPool().query(
+    "SELECT * FROM error_patterns WHERE id = $1 AND project_id = $2",
+    [id, projectId]
+  );
+  return rows[0] || null;
 }
 
 // ══════════════════════════════════════════════════════════════
