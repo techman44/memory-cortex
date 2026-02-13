@@ -326,10 +326,10 @@ server.tool(
 // ══════════════════════════════════════════════════════════════
 server.tool(
   "get_project_brief",
-  "Get foundational project identity: tech stack, modules, conventions, constraints. Call on session start to orient yourself.",
-  {},
-  async () => {
-    try { return textResult(await getProjectBrief(PROJECT_ID)); }
+  "Get foundational project identity: tech stack, modules, conventions, constraints. Call on session start to orient yourself. Use compact=true for a shorter version (~950 chars) when full detail isn't needed. Response includes field sizes so you can monitor brief bloat.",
+  { compact: z.boolean().optional().describe("Return truncated fields for lower token cost (default: false)") },
+  async ({ compact }) => {
+    try { return textResult(await getProjectBrief(PROJECT_ID, compact)); }
     catch (e: any) { return errorResult(e.message); }
   }
 );

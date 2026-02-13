@@ -563,7 +563,7 @@ export interface ProjectBriefParams {
   entry_points?: string;
 }
 
-export async function getProjectBrief(projectId: string) {
+export async function getProjectBrief(projectId: string, compact = false) {
   const { rows } = await getPool().query(
     "SELECT * FROM project_brief WHERE project_id = $1", [projectId]
   );
@@ -576,20 +576,72 @@ export async function getProjectBrief(projectId: string) {
     };
   }
 
+  // Field sizes for awareness
+  const fieldSizes: Record<string, number> = {};
+  let totalChars = 0;
+  for (const f of ["tech_stack", "module_map", "conventions", "critical_constraints", "entry_points"] as const) {
+    const len = (brief[f] || "").length;
+    fieldSizes[f] = len;
+    totalChars += len;
+  }
+
+  const truncate = (s: string | null, max: number) => {
+    if (!s) return "";
+    return s.length <= max ? s : s.substring(0, max - 3) + "...";
+  };
+
   const parts: string[] = [];
   parts.push(`Project: ${brief.project_name}`);
-  if (brief.tech_stack) parts.push(`Stack: ${brief.tech_stack}`);
-  if (brief.module_map) parts.push(`Modules: ${brief.module_map}`);
-  if (brief.conventions) parts.push(`Conventions: ${brief.conventions}`);
-  if (brief.critical_constraints) parts.push(`Constraints: ${brief.critical_constraints}`);
-  if (brief.entry_points) parts.push(`Entry points: ${brief.entry_points}`);
+  if (compact) {
+    if (brief.tech_stack) parts.push(`Stack: ${truncate(brief.tech_stack, 200)}`);
+    if (brief.module_map) parts.push(`Modules: ${truncate(brief.module_map, 200)}`);
+    if (brief.conventions) parts.push(`Conventions: ${truncate(brief.conventions, 150)}`);
+    if (brief.critical_constraints) parts.push(`Constraints: ${truncate(brief.critical_constraints, 200)}`);
+    if (brief.entry_points) parts.push(`Entry points: ${truncate(brief.entry_points, 200)}`);
+  } else {
+    if (brief.tech_stack) parts.push(`Stack: ${brief.tech_stack}`);
+    if (brief.module_map) parts.push(`Modules: ${brief.module_map}`);
+    if (brief.conventions) parts.push(`Conventions: ${brief.conventions}`);
+    if (brief.critical_constraints) parts.push(`Constraints: ${brief.critical_constraints}`);
+    if (brief.entry_points) parts.push(`Entry points: ${brief.entry_points}`);
+  }
   parts.push(`Last updated: ${brief.updated_at}`);
 
-  return { exists: true, brief: parts.join("\n"), raw: brief };
+  return {
+    exists: true,
+    brief: parts.join("\n"),
+    ...(compact ? {} : { raw: brief }),
+    size: { total_chars: totalChars, fields: fieldSizes },
+  };
 }
+
+// Soft limits per field — saves regardless but returns warnings
+const BRIEF_FIELD_LIMITS: Record<string, number> = {
+  tech_stack: 500,
+  module_map: 500,
+  conventions: 500,
+  critical_constraints: 400,
+  entry_points: 500,
+};
 
 export async function setProjectBrief(projectId: string, params: ProjectBriefParams) {
   const pool = getPool();
+
+  // Check field sizes and generate warnings
+  const warnings: string[] = [];
+  let totalChars = 0;
+  for (const [field, limit] of Object.entries(BRIEF_FIELD_LIMITS)) {
+    const val = (params as any)[field] as string | undefined;
+    if (val) {
+      totalChars += val.length;
+      if (val.length > limit) {
+        warnings.push(`${field}: ${val.length} chars (recommended max: ${limit}). Consider condensing.`);
+      }
+    }
+  }
+  if (totalChars > 2000) {
+    warnings.push(`Total brief size: ${totalChars} chars. This costs ~${Math.ceil(totalChars / 4)} tokens on every session start. Consider using notes for extended details and keeping the brief concise.`);
+  }
 
   // Atomic upsert
   await pool.query(
@@ -629,7 +681,9 @@ export async function setProjectBrief(projectId: string, params: ProjectBriefPar
     );
   }
 
-  return { message: "Project brief updated", project_name: params.project_name };
+  const result: any = { message: "Project brief updated", project_name: params.project_name, total_chars: totalChars };
+  if (warnings.length) result.warnings = warnings;
+  return result;
 }
 
 // ══════════════════════════════════════════════════════════════

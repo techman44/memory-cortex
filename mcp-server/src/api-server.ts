@@ -198,7 +198,7 @@ app.post("/api/prune", async (req, res) => {
 
 // ── Project Brief ─────────────────────────────────────────────
 app.get("/api/brief", async (req, res) => {
-  try { res.json(await getProjectBrief(pid(req))); }
+  try { res.json(await getProjectBrief(pid(req), req.query.compact === "true")); }
   catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 
